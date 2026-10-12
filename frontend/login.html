@@ -549,7 +549,7 @@
           type="text"
           id="username"
           class="form-input"
-          placeholder="Введите логин"
+          placeholder="Введите почту"
           autocomplete="username"
           required
         >
@@ -559,7 +559,7 @@
             <circle cx="12" cy="7" r="4"/>
           </svg>
         </div>
-        <div class="error-message" id="usernameError">Введите логин</div>
+        <div class="error-message" id="usernameError">Введите почту</div>
       </div>
 
       <div class="form-group">
@@ -601,6 +601,8 @@
   </div>
 </div>
 
+<script src="api.js"></script>
+<script src="mock-api.js"></script>
 <script>
 // ===== СОЗДАНИЕ ЧАСТИЦ =====
 function createParticles() {
@@ -710,39 +712,55 @@ document.addEventListener('DOMContentLoaded', () => {
     loginBtn.querySelector('.login-btn-text').textContent = 'Вход...';
 
     try {
-      // ВАЖНО: так как будет Nginx, мы стучимся на относительный путь /api/...
-      // Nginx сам перенаправит это на Go-контейнер
-      const response = await fetch('/api/user/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          login: username, // Маппим username из HTML в login для Go
-          password: password
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Ошибка входа');
-      }
-
-      // Успех! Сохраняем токен и роль
-      localStorage.setItem('jwt_token', data.token);
-      localStorage.setItem('user_role', data.role);
-      localStorage.setItem('user_name', data.name);
-
-      alert(`Добро пожаловать, ${data.name}!`);
-      // window.location.href = '/dashboard.html'; // Редирект на главную
+      // Вход идёт через общий слой api.js — тот же, которым пользуются остальные страницы,
+      // поэтому сессия сразу видна везде.
+      API.setSession(await API.post('/auth/login', { email: username, password: password }));
+      window.location.href = afterLogin();
 
     } catch (error) {
-      alert('Ошибка: ' + error.message);
+      const box = document.getElementById('passwordError');
+      box.textContent = error.status === 404 ? 'Сервер пока не поддерживает вход — см. подсказку ниже' : error.message;
+      box.style.display = 'block';
+      box.classList.add('visible');
     } finally {
       // Возвращаем кнопку в исходное состояние
       loginBtn.disabled = false;
       loginBtn.querySelector('.login-btn-text').innerHTML = 'Войти <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
     }
   }
+
+  // ===== ПОСЛЕ ВХОДА =====
+  // Куда вернуть пользователя: на страницу, с которой его отправили входить.
+  function afterLogin() {
+    const next = new URLSearchParams(location.search).get('next') || '';
+    const pages = { stock: 'sclad.html', supplies: 'supplies.html', orders: 'orders.html', stoplist: 'stoplist.html', analytics: 'analytics.html' };
+    if (pages[next]) return pages[next];
+    // Допускаются только названия экранов — никаких произвольных адресов.
+    return /^[a-z-]+$/.test(next) ? 'app.html#/' + next : 'index.html';
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (API.getUser()) {
+      window.location.replace(afterLogin());
+      return;
+    }
+    const form = document.getElementById('loginForm');
+    const hint = document.createElement('div');
+    hint.style.cssText = 'margin-top:18px; font-size:13px; line-height:1.5; color:#a5a5a5; text-align:center';
+    hint.innerHTML = 'Нет аккаунта? <a href="app.html#/register" style="color:#fff">Зарегистрироваться</a>';
+    form.after(hint);
+
+    // Если сервер не отвечает или ещё не умеет отдавать данные, говорим об этом сразу.
+    if (!API.mock) {
+      API.get('/pulse').catch((error) => {
+        if (error.status === 401) return;
+        const note = document.createElement('div');
+        note.style.cssText = 'margin-top:18px; padding:14px; border-radius:10px; font-size:13px; line-height:1.5; color:#d6d6d6; background:rgba(242,194,75,0.1); border:1px solid rgba(242,194,75,0.45)';
+        note.innerHTML = '<b style="color:#f2c24b; font-weight:500">' + (error.status === 404 ? 'Бэкенд пока не отдаёт данные сайта' : 'Сервер недоступен') + '</b><br>Чтобы посмотреть сайт без него, включите режим с данными в браузере.<br><a href="?mock=1" style="color:#fff">Открыть без сервера</a>';
+        hint.after(note);
+      });
+    }
+  });
 
 </script>
 

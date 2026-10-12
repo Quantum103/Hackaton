@@ -626,14 +626,15 @@
   <div class="nav-left">
     <a class="nav-logo" href="index.html">Stoplist</a>
     <ul class="nav-links">
-      <li><a href="warehouse.html">Склад</a></li>
-      <li><a>Поставки</a></li>
-      <li><a>Заказы</a></li>
-      <li><a>Стоп-лист</a></li>
-      <li><a>Горячее</a></li>
-      <li><a>Сроки</a></li>
-      <li><a>Аналитика</a></li>
-      <li><a>Демо</a></li>
+      <li><a href="sclad.html">Склад</a></li>
+      <li><a href="supplies.html">Поставки</a></li>
+      <li><a href="app.html#/menu">Меню</a></li>
+      <li><a href="orders.html">Заказы</a></li>
+      <li><a href="stoplist.html">Стоп-лист</a></li>
+      <li><a href="app.html#/hot-offers">Горячее</a></li>
+      <li><a href="app.html#/expiry">Сроки</a></li>
+      <li><a href="analytics.html">Аналитика</a></li>
+      <li><a href="app.html#/demo">Демо</a></li>
     </ul>
   </div>
   <button class="nav-dashboard-btn" onclick="expandDashboard()">Дашборд</button>
@@ -653,7 +654,7 @@
       </h1>
       <p class="hero-subtitle" id="hero-subtitle"></p>
       <div class="hero-buttons">
-        <button class="btn-primary" onclick="event.stopPropagation(); window.location.href='warehouse.html'">Открыть склад</button>
+        <button class="btn-primary" onclick="event.stopPropagation(); window.location.href='sclad.html'">Открыть склад</button>
         <button class="btn-secondary" onclick="event.stopPropagation(); expandDashboard()">Запустить демо</button>
       </div>
     </div>
@@ -809,8 +810,12 @@
   Свернуть
 </button>
 
+<script src="api.js"></script>
+<script src="mock-api.js"></script>
+<script src="shared.js"></script>
 <script>
-// ===== ДАННЫЕ ИЗ GO-СТРУКТУРЫ =====
+// ===== ДАННЫЕ С СЕРВЕРА =====
+// Структура заполняется ответами API (см. loadServerData ниже).
 const serverData = {
   totalProducts: 0,
   totalBatches: 0,
@@ -1025,7 +1030,77 @@ function handleRightClick() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', renderHero);
+// ===== ЗАГРУЗКА ДАННЫХ С СЕРВЕРА =====
+// Дашборд собирается из тех же запросов, что и остальные страницы: склад, меню, горячие предложения.
+async function loadServerData() {
+  if (!API.getUser()) return; // гостю дашборд показывается пустым
+  let stock, menu, hot;
+  try {
+    [stock, menu, hot] = await Promise.all([API.get('/stock'), API.get('/menu'), API.get('/hot-offers')]);
+  } catch (error) {
+    if (error.status === 401) API.clearSession();
+    return;
+  }
+
+  const share = (part) => (stock.length ? Math.round((part / stock.length) * 100) : 0);
+  const hoursLeft = (item) => Math.max(0, Math.round((new Date(item.nearestExpiresAt).getTime() - API.now()) / 3600000));
+  const ok = stock.filter((item) => item.status === 'ok').length;
+  const soon = stock.filter((item) => item.status === 'warning').length;
+  const byDeadline = stock.filter((item) => item.nearestExpiresAt).sort((a, b) => a.nearestExpiresAt.localeCompare(b.nearestExpiresAt));
+  const attention = byDeadline.find((item) => item.status !== 'ok');
+  const stopped = menu.filter((dish) => dish.stopped);
+  const available = menu.filter((dish) => !dish.stopped);
+
+  serverData.totalProducts = stock.length;
+  serverData.totalBatches = stock.reduce((sum, item) => sum + item.batchCount, 0);
+  serverData.expiry = {
+    okPercent: share(ok),
+    riskPercent: stock.length ? 100 - share(ok) : 0,
+    attentionItem: attention ? attention.name : '',
+    attentionHours: attention ? hoursLeft(attention) : 0,
+  };
+  serverData.composition = { okPercent: share(ok), soonPercent: share(soon), expirePercent: share(stock.length - ok - soon), totalProducts: stock.length };
+  serverData.deadlines = byDeadline.filter((item) => item !== attention).slice(0, 3).map((item) => ({ name: item.name, hours: hoursLeft(item) }));
+  serverData.sales = { available: available.length, total: menu.length };
+  serverData.stoplist = {
+    menuDishes: menu.length,
+    stopped: stopped.length,
+    hot: hot.length,
+    items: stopped.slice(0, 3).map((dish) => ({ name: dish.name, missing: dish.stopReason ? dish.stopReason.productName : 'ингредиента' })),
+  };
+  serverData.portions = available.slice().sort((a, b) => a.availablePortions - b.availablePortions).slice(0, 4).map((dish) => ({ name: dish.name, value: dish.availablePortions }));
+  renderHero();
+}
+
+// ===== ВХОД / ВЫХОД =====
+// Кнопка в шапке: гостю — «Войти», вошедшему — «Выйти».
+function renderAuthButton() {
+  const anchor = document.querySelector('.nav-dashboard-btn');
+  if (!anchor) return;
+  const user = API.getUser();
+  const button = document.createElement('button');
+  button.className = 'nav-dashboard-btn';
+  button.style.marginLeft = '8px';
+  button.textContent = user ? 'Выйти' : 'Войти';
+  button.title = user ? user.name + ' · ' + user.email : '';
+  button.onclick = (event) => {
+    event.stopPropagation();
+    if (!user) {
+      window.location.href = 'login.html';
+      return;
+    }
+    API.post('/auth/logout').catch(() => {});
+    API.clearSession();
+    window.location.href = 'index.html';
+  };
+  anchor.after(button);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  renderHero();
+  renderAuthButton();
+  loadServerData();
+});
 </script>
 
 </body>

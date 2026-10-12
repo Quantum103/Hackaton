@@ -814,6 +814,10 @@
     const note = document.createElement('a')
     note.href = '?mock=0'
     note.className = 'mock-note label'
+    // Стили заданы прямо здесь: пометка нужна и на страницах, которые не подключают styles.css.
+    note.style.cssText =
+      'position:fixed; left:50%; bottom:12px; transform:translateX(-50%); z-index:25; padding:7px 10px; border-radius:3px; white-space:nowrap;' +
+      'background:#f2c24b; color:#0a0a0b; text-decoration:none; font:600 10.5px/1.2 system-ui, sans-serif; letter-spacing:0.09em; text-transform:uppercase'
     note.textContent = 'Заглушка: данные в браузере · выключить'
     document.body.append(note)
   })

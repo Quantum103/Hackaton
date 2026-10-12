@@ -92,7 +92,7 @@
     } catch (error) {
       if (error.status === 401 && API.getUser()) {
         API.clearSession()
-        location.hash = '#/login'
+        location.href = 'login.html'
       }
       throw error
     }
@@ -102,7 +102,7 @@
 
   // Разделы с третьим элементом живут в отдельных файлах, остальные — экраны этой страницы.
   const NAV = [
-    ['stock', 'Склад'],
+    ['stock', 'Склад', 'sclad.html'],
     ['supplies', 'Поставки', 'supplies.html'],
     ['menu', 'Меню'],
     ['orders', 'Заказы', 'orders.html'],
@@ -128,11 +128,11 @@
     document.getElementById('navLinks').innerHTML = links
     document.getElementById('navActions').innerHTML = user
       ? `<span class="nav-user" title="${escapeHtml(user.email)}">${escapeHtml(user.name)}</span>${isAdmin() ? `<a class="btn btn-line btn-sm${current === 'admin' ? ' active' : ''}" href="#/admin">Админ</a>` : ''}<span class="label tag clock-chip" id="clockChip" hidden></span><button type="button" class="btn btn-line btn-sm" data-logout>Выйти</button>`
-      : `<a class="btn btn-solid btn-sm" href="#/login">Войти</a>`
+      : `<a class="btn btn-solid btn-sm" href="login.html">Войти</a>`
     menu.innerHTML =
       links +
       '<div class="divider"></div>' +
-      (user ? `${isAdmin() ? '<a href="#/admin">Администрирование</a>' : ''}<a href="#/" data-logout>Выйти (${escapeHtml(user.name)})</a>` : '<a href="#/login">Войти</a><a href="#/register">Регистрация</a>')
+      (user ? `${isAdmin() ? '<a href="#/admin">Администрирование</a>' : ''}<a href="index.html" data-logout>Выйти (${escapeHtml(user.name)})</a>` : '<a href="login.html">Войти</a><a href="#/register">Регистрация</a>')
   }
 
   function setMenu(open) {
@@ -153,8 +153,7 @@
       API.post('/auth/logout').catch(() => {})
       API.clearSession()
       setMenu(false)
-      if (location.hash === '#/' || location.hash === '') route()
-      else location.hash = '#/'
+      location.href = 'index.html'
       return
     }
     if (menu.classList.contains('open') && (event.target.closest('#menu a') || !event.target.closest('#menu'))) setMenu(false)
@@ -169,10 +168,6 @@
 
   /* ---------- Главная ---------- */
 
-  const MARQUEE = ['Up_Sent', 'Cheaf']
-
-  const percent = (part, total) => (total > 0 ? Math.round((part / total) * 100) : 0)
-
   // 1 продукт, 3 продукта, 5 продуктов
   function plural(count, one, few, many) {
     const tens = count % 100
@@ -181,217 +176,11 @@
     return count + ' ' + word
   }
 
-  function summarize(stock, supplies, menu, hot, batches) {
-    const ok = stock.filter((item) => item.status === 'ok').length
-    const warning = stock.filter((item) => item.status === 'warning').length
-    return {
-      products: stock.length,
-      batches: stock.reduce((sum, item) => sum + item.batchCount, 0),
-      supplies,
-      okShare: percent(ok, stock.length),
-      warningShare: percent(warning, stock.length),
-      riskyShare: percent(stock.length - ok - warning, stock.length),
-      attention: stock
-        .filter((item) => item.status !== 'ok' && item.nearestExpiresAt)
-        .sort((a, b) => a.nearestExpiresAt.localeCompare(b.nearestExpiresAt)),
-      // Если тревожных продуктов нет, показываем просто ближайшие сроки.
-      nearest: stock.filter((item) => item.nearestExpiresAt).sort((a, b) => a.nearestExpiresAt.localeCompare(b.nearestExpiresAt)),
-      byBatches: stock.slice().sort((a, b) => b.batchCount - a.batchCount).slice(0, 4),
-      dishes: menu.length,
-      stopped: menu.filter((dish) => dish.stopped).length,
-      hot: hot.length,
-      writtenOff: batches.filter((batch) => batch.writtenOff > 0).length,
-    }
-  }
-
-  const stockLink = (productId) => '#/stock?open=' + encodeURIComponent(productId)
-
-  // Плитки дашборда. Без данных (гость или пустой склад) вместо чисел стоят прочерки.
-  // Почти всё на плитках кликабельно и ведёт на экран с подробностями по этой цифре.
-  function dashTiles(s) {
-    const has = Boolean(s && s.products > 0)
-    const show = (value) => (has ? value : '—')
-    const first = has ? s.attention[0] : null
-    const tag = !has ? 'Нет данных' : s.attention.length ? 'Требует внимания' : 'Всё в порядке'
-    const nearestText = !has
-      ? 'Склад пуст — примите первую поставку'
-      : first
-        ? `${escapeHtml(first.name)}: ${formatTimeLeft(first.nearestExpiresAt)}`
-        : 'Истекающих партий нет'
-    const nearestHref = first ? stockLink(first.productId) : has ? '#/expiry' : '#/supplies'
-    const maxBatches = has ? Math.max(1, ...s.byBatches.map((item) => item.batchCount)) : 1
-    // Сначала тревожные продукты, затем просто ближайшие по сроку — до четырёх строк.
-    const soon = has ? [...new Set([...s.attention, ...s.nearest])].slice(0, 4) : []
-
-    return `
-      <div class="tile is-first"><div class="tile-in">
-        <div class="tile-head"><span class="label with-dot"><span class="dot"></span>Сроки годности</span><a class="label tile-go" href="#/expiry">Открыть</a></div>
-        <div class="pair">
-          <a class="dash-link" href="#/expiry?filter=ok" title="Партии в норме"><div class="big">${show(s && s.okShare + '%')}</div><div class="small">в норме</div></a>
-          <span class="slash">/</span>
-          <a class="dash-link" href="#/expiry" title="Все партии по срочности"><div class="big">${show(s && 100 - s.okShare + '%')}</div><div class="small">под риском</div></a>
-        </div>
-        <a class="dash-link" href="${nearestHref}" style="margin-left:17px">
-          <span class="label tag" style="margin-top:14px">${tag}</span>
-          <p class="note">${nearestText}</p>
-        </a>
-        <ul class="steps">
-          <li class="label"><span class="dot${has && s.attention.length ? '' : ' is-off'}"></span><a href="#/expiry?filter=critical">Истекает продуктов: ${show(s && s.attention.length)}</a></li>
-          <li class="label"><span class="dot${has && s.writtenOff ? '' : ' is-off'}"></span><a href="#/expiry?filter=written">Списано по сроку: ${show(s && s.writtenOff)}</a></li>
-          <li class="label"><span class="dot"></span><a href="analytics.html">Прогноз стоп-листа</a></li>
-        </ul>
-      </div></div>
-
-      <div class="tile is-extra"><div class="tile-in">
-        <div class="tile-head"><span class="label">Состав склада</span><a class="label tile-go" href="#/stock">Склад</a></div>
-        <div class="triple">
-          <a class="dash-link" href="#/expiry?filter=ok"><div class="big">${show(s && s.okShare + '%')}</div><div class="small">В норме</div></a>
-          <a class="dash-link" href="#/expiry?filter=warning"><div class="big">${show(s && s.warningShare + '%')}</div><div class="small">Скоро истекает</div></a>
-          <a class="dash-link" href="#/expiry?filter=critical"><div class="big">${show(s && s.riskyShare + '%')}</div><div class="small">Истекает</div></a>
-        </div>
-        <div class="segbar">
-          <a href="#/expiry?filter=ok" title="В норме" style="flex-grow:${(has && s.okShare) || 1}"></a>
-          <a href="#/expiry?filter=warning" title="Скоро истекает" style="flex-grow:${(has && s.warningShare) || 1}"></a>
-          <a href="#/expiry?filter=critical" title="Истекает" style="flex-grow:${(has && s.riskyShare) || 1}"></a>
-        </div>
-        <a class="row-link" href="stoplist.html"><span>В стоп-листе</span><b>${show(s && `${s.stopped} из ${s.dishes} блюд`)}</b></a>
-        <a class="row-link" href="#/hot-offers"><span>Горячие предложения</span><b>${show(s && s.hot)}</b></a>
-      </div></div>
-
-      <div class="tile is-extra"><div class="tile-in">
-        <div class="tile-head"><span class="label">Ближайшие сроки</span><span class="label tag" style="margin:0">${tag}</span></div>
-        <div class="row-list">
-          ${
-            soon.length
-              ? soon.map((item) => `<a class="row-link" href="${stockLink(item.productId)}"><span>${escapeHtml(item.name)}</span><b style="color:${STATUS[item.status].color}">${formatTimeLeft(item.nearestExpiresAt)}</b></a>`).join('')
-              : `<p class="note">${nearestText}</p>`
-          }
-        </div>
-        <a class="row-link is-more" href="#/expiry"><span>Все партии по срокам</span><b>→</b></a>
-      </div></div>
-
-      <a class="tile is-first tile-link" href="#/stock" title="Открыть склад"><div class="tile-in">
-        <div class="tile-head"><span class="label">Партий на складе</span><span class="label tile-go">Склад</span></div>
-        <div class="big" style="margin-top:18px">${show(s && s.batches)}<span class="muted"> в ${show(s && s.products)} продуктах</span></div>
-        <svg class="spark" viewBox="0 0 240 74" preserveAspectRatio="none" aria-hidden="true">
-          <path d="M0 62 C 30 50, 44 38, 66 42 S 100 56, 122 40 S 150 18, 172 28 S 210 22, 240 8" />
-        </svg>
-      </div></a>
-
-      <div class="tile is-extra"><div class="tile-in">
-        <div class="tile-head"><span class="label">Поставки</span><a class="label tile-go" href="supplies.html">Все поставки</a></div>
-        <div class="stats">
-          <div class="stats-col">
-            <a class="dash-link" href="supplies.html"><div class="big">${show(s && s.supplies.length)}</div><div class="small">Поставок</div></a>
-            <a class="dash-link" href="#/stock"><div class="big">${show(s && s.products)}</div><div class="small">Продуктов</div></a>
-            <a class="dash-link" href="#/expiry"><div class="big">${show(s && s.batches)}</div><div class="small">Партий</div></a>
-          </div>
-          <div class="row-list">
-            ${
-              has && s.supplies.length
-                ? s.supplies.slice(0, 3).map((supply) => `<a class="row-link" href="supplies.html?open=${encodeURIComponent(supply.id)}"><span>${escapeHtml(supply.number)}</span><b class="muted">${formatDateTime(supply.createdAt)}</b></a>`).join('')
-                : '<p class="note">Поставок пока не было</p>'
-            }
-            <a class="btn btn-solid btn-sm" href="supplies.html" data-admin style="margin-top:14px">Принять поставку</a>
-          </div>
-        </div>
-      </div></div>
-
-      <div class="tile is-extra"><div class="tile-in">
-        <div class="tile-head"><span class="label">Больше всего партий</span><a class="label tile-go" href="orders.html">Заказы</a></div>
-        <div class="bars">
-          ${(has ? s.byBatches : [])
-            .map(
-              (item, index) => `<a class="bar${index === 0 ? ' is-top' : ''}" href="${stockLink(item.productId)}" title="${escapeHtml(item.name)} — открыть партии">
-                <span class="big">${item.batchCount}</span>
-                <i style="height:${Math.max(10, (item.batchCount / maxBatches) * 62)}%"></i>
-                <span class="bar-name">${escapeHtml(item.name)}</span>
-              </a>`,
-            )
-            .join('')}
-        </div>
-      </div></div>`
-  }
-
-  function homeView() {
-    const user = API.getUser()
-    const marquee = Array.from({ length: 16 }, (_, index) => `<span>${MARQUEE[index % MARQUEE.length]}</span>`).join('')
-    view.innerHTML = `
-      <section class="home" id="home">
-        <div class="home-left">
-          <span class="label home-badge" id="homeBadge">Склад под контролем</span>
-          <h1><span>Ясность по</span><span>каждой партии</span><span>на складе</span></h1>
-          <p class="home-sub">Stoplist показывает остатки, сроки годности и стоп-лист в реальном времени — без таблиц вручную</p>
-          <div class="home-ctas">
-            ${
-              user
-                ? '<a class="btn btn-solid" href="#/stock">Открыть склад</a><a class="btn btn-line" href="supplies.html" data-admin>Принять поставку</a>'
-                : '<a class="btn btn-solid" href="#/login">Войти</a><a class="btn btn-line" href="#/register">Создать аккаунт</a>'
-            }
-          </div>
-          <div class="home-strip">
-            <div class="marquee" aria-label="${MARQUEE.join(', ')}"><div class="marquee-track" aria-hidden="true">${marquee}</div></div>
-          </div>
-        </div>
-
-        <aside class="home-panel" id="homePanel" aria-label="Сводка по складу" tabindex="0">
-          <div class="panel-bg"><i></i><i></i><span class="grain"></span></div>
-          <div class="dash" id="dash">${dashTiles(null)}</div>
-          <div class="panel-caption">
-            <h3>Сроки под контролем в реальном времени</h3>
-            <p>От приёмки до списания — отслеживается автоматически</p>
-          </div>
-          <p class="panel-signal">Каждая партия, каждое блюдо — один ясный сигнал</p>
-          <button type="button" class="btn btn-line btn-sm panel-close" id="panelClose" tabindex="-1">Свернуть</button>
-        </aside>
-      </section>`
-
-    const home = document.getElementById('home')
-    const panel = document.getElementById('homePanel')
-    const closeButton = document.getElementById('panelClose')
-
-    const setOpen = (open) => {
-      home.classList.toggle('is-open', open)
-      closeButton.tabIndex = open ? 0 : -1
-    }
-
-    // Панель раскрывается нажатием; повторное нажатие мимо дашборда сворачивает её.
-    panel.addEventListener('click', (event) => {
-      if (!home.classList.contains('is-open')) setOpen(true)
-      else if (!event.target.closest('.dash')) setOpen(false)
-    })
-    panel.addEventListener('keydown', (event) => {
-      if (event.target === panel && event.key === 'Enter') setOpen(!home.classList.contains('is-open'))
-    })
-    const onKey = (event) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('keydown', onKey)
-
-    if (user) {
-      const loadDash = () => Promise.all(['/stock', '/supplies', '/menu', '/hot-offers', '/expiry'].map((path) => call(API.get(path))))
-        .then(([stock, supplies, menu, hot, batches]) => {
-          if (!document.getElementById('dash')) return
-          const summary = summarize(stock, supplies, menu, hot, batches)
-          document.getElementById('dash').innerHTML = dashTiles(summary)
-          if (summary.products > 0) {
-            document.getElementById('homeBadge').textContent =
-              plural(summary.products, 'продукт', 'продукта', 'продуктов') + ' · ' + plural(summary.batches, 'партия', 'партии', 'партий') + ' под контролем'
-          }
-        })
-        .catch(() => {})
-      loadDash()
-      refreshView = loadDash
-    }
-
-    return () => document.removeEventListener('keydown', onKey)
-  }
-
   /* ---------- Вход и регистрация ---------- */
 
   function authView(mode, query) {
     const isRegister = mode === 'register'
-    const next = query.get('next') || 'stock'
+    const next = /^[a-z-]+$/.test(query.get('next') || '') ? query.get('next') : 'stock'
     view.innerHTML = `
       <section class="auth">
         <div class="auth-main">
@@ -418,7 +207,7 @@
             <p class="auth-switch">
               ${
                 isRegister
-                  ? `Уже есть аккаунт? <a href="#/login?next=${encodeURIComponent(next)}">Войти</a>`
+                  ? `Уже есть аккаунт? <a href="login.html?next=${encodeURIComponent(next)}">Войти</a>`
                   : `Нет аккаунта? <a href="#/register?next=${encodeURIComponent(next)}">Зарегистрироваться</a>`
               }
             </p>
@@ -436,6 +225,22 @@
     const form = document.getElementById('authForm')
     const message = document.getElementById('authMsg')
     form.querySelector('input').focus()
+
+    // Без сервера войти нельзя, а без входа не открывается ни один раздел.
+    // Проверяем связь сразу и объясняем, что делать, не дожидаясь неудачной попытки входа.
+    if (!API.mock) {
+      API.get('/pulse').catch((error) => {
+        if (!document.body.contains(form) || error.status === 401) return
+        form.insertAdjacentHTML(
+          'beforebegin',
+          `<div class="server-note" role="alert">
+            <b>${error.status === 404 ? 'Бэкенд пока не отдаёт данные сайта' : 'Сервер недоступен'}</b>
+            <span>Вход и разделы сайта работают только с запущенным бэкендом. Чтобы посмотреть сайт без него, включите режим с данными в браузере.</span>
+            <a class="btn btn-solid btn-sm" href="?mock=1">Открыть без сервера</a>
+          </div>`,
+        )
+      })
+    }
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault()
@@ -462,116 +267,13 @@
         const body = { email: data.email.trim(), password: data.password }
         if (isRegister) body.name = data.name.trim()
         API.setSession(await API.post(isRegister ? '/auth/register' : '/auth/login', body))
+        // Часть разделов — отдельные страницы: маршрутизатор сам отправит куда нужно.
         location.hash = '#/' + next
       } catch (error) {
         setMessage(message, error.message, true)
         submit.disabled = false
       }
     })
-  }
-
-  /* ---------- Склад ---------- */
-
-  let stockOpenId = null // раскрытый продукт переживает автообновление
-  let pendingOpen = null // что раскрыть сразу после перехода по ссылке вида #/stock?open=…
-
-  async function stockView(silent) {
-    if (!silent) {
-      stockOpenId = null
-      view.innerHTML = `<main class="page">${pageHeader('Склад', 'Остатки по продуктам. Нажмите на строку, чтобы увидеть партии.')}<div id="stockBody">${loading()}</div></main>`
-    }
-    const body = document.getElementById('stockBody')
-    if (!body) return
-
-    let stock
-    try {
-      stock = await call(API.get('/stock'))
-    } catch (error) {
-      body.innerHTML = `<div class="glass empty"><h3>Не удалось загрузить склад</h3><p>${escapeHtml(error.message)}</p></div>`
-      return
-    }
-    if (!document.body.contains(body)) return
-
-    if (stock.length === 0) {
-      body.innerHTML = `<div class="glass empty">
-        <h3>Склад пуст</h3>
-        <p>Продукты появятся здесь после приёмки первой поставки.</p>
-        <a class="btn btn-solid" href="supplies.html" data-admin>Принять поставку</a>
-      </div>`
-      return
-    }
-
-    body.innerHTML = `<div class="glass table-wrap"><table class="table">
-      <thead><tr><th class="col-chev"></th><th>Продукт</th><th class="num">Доступно</th><th class="num">Партий</th><th>Ближайший срок</th><th>Статус</th></tr></thead>
-      <tbody>
-        ${stock
-          .map(
-            (item) => `<tr class="is-click" data-product="${escapeHtml(item.productId)}" data-unit="${item.unit}">
-              <td class="col-chev">${chevron(false)}</td>
-              <td class="strong">${escapeHtml(item.name)}</td>
-              <td class="num">${item.available > 0 ? formatQuantity(item.available, item.unit) : '<span class="danger">Нет в наличии</span>'}</td>
-              <td class="num">${item.batchCount}</td>
-              <td class="dim">${item.nearestExpiresAt ? formatTimeLeft(item.nearestExpiresAt) : '—'}</td>
-              <td>${statusBadge(item.status)}</td>
-            </tr>`,
-          )
-          .join('')}
-      </tbody>
-    </table></div>`
-
-    body.onclick = async (event) => {
-      const row = event.target.closest('tr[data-product]')
-      if (!row) return
-      const opened = row.nextElementSibling && row.nextElementSibling.classList.contains('is-sub') ? row.nextElementSibling : null
-      body.querySelectorAll('tr.is-sub').forEach((sub) => sub.remove())
-      body.querySelectorAll('.chev.is-open').forEach((icon) => icon.classList.remove('is-open'))
-      stockOpenId = opened ? null : row.dataset.product
-      if (opened) return
-
-      row.querySelector('.chev').classList.add('is-open')
-      const sub = document.createElement('tr')
-      sub.className = 'is-sub'
-      sub.innerHTML = `<td></td><td colspan="5">${loading()}</td>`
-      row.after(sub)
-
-      const unit = row.dataset.unit
-      try {
-        const batches = await call(API.get('/stock/' + encodeURIComponent(row.dataset.product) + '/batches'))
-        sub.lastElementChild.innerHTML = `<table class="table is-inner">
-          <thead><tr><th>Поставка</th><th>Получена</th><th class="num">Остаток</th><th>Срок хранения</th><th>Статус</th></tr></thead>
-          <tbody>
-            ${batches
-              .map(
-                (batch) => `<tr>
-                  <td>${escapeHtml(batch.supplyNumber)}</td>
-                  <td class="dim">${formatDateTime(batch.receivedAt)}</td>
-                  <td class="num">${formatQuantity(batch.qtyRemaining, unit)} <span class="dim">из ${formatQuantity(batch.qtyInitial, unit)}</span></td>
-                  <td><div class="shelf" style="--status-color:${STATUS[batch.status].color}">
-                    <div class="shelf-track"><div class="shelf-range" style="width:${Math.round(remainingShare(batch.receivedAt, batch.expiresAt) * 100)}%"></div></div>
-                    <span class="shelf-text">${formatTimeLeft(batch.expiresAt)}</span>
-                  </div></td>
-                  <td>${statusBadge(batch.status)}</td>
-                </tr>`,
-              )
-              .join('')}
-          </tbody>
-        </table>`
-      } catch (error) {
-        sub.lastElementChild.innerHTML = `<p class="form-msg is-error">${escapeHtml(error.message)}</p>`
-      }
-    }
-
-    // После тихого обновления заново раскрываем открытую строку; при переходе с дашборда — нужный продукт.
-    const reopen = silent ? stockOpenId : pendingOpen
-    pendingOpen = null
-    if (reopen) {
-      const row = [...body.querySelectorAll('tr[data-product]')].find((item) => item.dataset.product === reopen)
-      stockOpenId = null
-      if (row) {
-        row.click()
-        if (!silent) row.scrollIntoView({ block: 'center' })
-      }
-    }
   }
 
   /* ---------- Меню: блюда и их состав ---------- */
@@ -1196,6 +898,16 @@
     const query = new URLSearchParams(rawQuery || '')
     const user = API.getUser()
 
+    // Главная и вход — отдельные страницы.
+    if (path === '') {
+      location.replace('index.html')
+      return
+    }
+    if (path === 'login' && !user) {
+      location.replace('login.html' + (rawQuery ? '?' + rawQuery : ''))
+      return
+    }
+
     // Экран переехал в отдельный файл — отправляем туда, сохранив параметры.
     if (PAGES[path]) {
       location.replace(PAGES[path] + (rawQuery ? '?' + rawQuery : ''))
@@ -1204,15 +916,15 @@
 
     // Рабочие экраны доступны только после входа; вошедшему незачем видеть форму входа.
     if (!PUBLIC.includes(path) && !user) {
-      location.replace('#/login?next=' + encodeURIComponent(path))
+      location.replace('login.html?next=' + encodeURIComponent(path))
       return
     }
     if ((path === 'login' || path === 'register') && user) {
-      location.replace('#/stock')
+      location.replace('sclad.html')
       return
     }
     if (path === 'admin' && !isAdmin()) {
-      location.replace('#/stock')
+      location.replace('sclad.html')
       return
     }
 
@@ -1224,12 +936,7 @@
     renderNav(path)
     window.scrollTo(0, 0)
 
-    if (path === '') cleanup = homeView()
-    else if (path === 'login' || path === 'register') authView(path, query)
-    else if (path === 'stock') {
-      pendingOpen = query.get('open')
-      open(stockView)
-    }
+    if (path === 'login' || path === 'register') authView(path, query)
     else if (path === 'menu') menuView()
     else if (path === 'hot-offers') open(hotView)
     else if (path === 'expiry') {

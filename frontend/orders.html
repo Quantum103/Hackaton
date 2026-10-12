@@ -227,7 +227,7 @@
           document.getElementById('statAvailableLabel').textContent = `блюд доступно из ${menu.length}`
 
           if (menu.length === 0) {
-            body.innerHTML = UI.emptyState('В меню пока нет блюд', 'Чтобы принимать заказы, добавьте блюда и их состав.', '<a class="btn btn-solid" href="index.html#/menu">Перейти в меню</a>')
+            body.innerHTML = UI.emptyState('В меню пока нет блюд', 'Чтобы принимать заказы, добавьте блюда и их состав.', '<a class="btn btn-solid" href="app.html#/menu">Перейти в меню</a>')
             return
           }
           // Блюда, которых больше нет в меню, из корзины убираются.

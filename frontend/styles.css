@@ -741,3 +741,11 @@ select.input:disabled { opacity: 0.6; cursor: default; }
   position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 25; padding: 7px 10px; border-radius: 3px; white-space: nowrap;
   background: #f2c24b; color: #0a0a0b; text-decoration: none;
 }
+
+/* Предупреждение на форме входа, когда бэкенд не отвечает */
+.server-note {
+  margin-top: 24px; padding: 16px; border-radius: 12px; display: grid; gap: 10px; justify-items: start;
+  background: rgba(242, 194, 75, 0.1); border: 1px solid rgba(242, 194, 75, 0.45);
+  font-size: 13.5px; line-height: 1.5; color: var(--ink-soft);
+}
+.server-note b { font-weight: 500; color: #f2c24b; }

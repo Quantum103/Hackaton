@@ -155,15 +155,15 @@ const UI = (() => {
   /* ---------- Шапка, вход и роль ---------- */
 
   const NAV = [
-    ['stock', 'Склад', 'index.html#/stock'],
+    ['stock', 'Склад', 'sclad.html'],
     ['supplies', 'Поставки', 'supplies.html'],
-    ['menu', 'Меню', 'index.html#/menu'],
+    ['menu', 'Меню', 'app.html#/menu'],
     ['orders', 'Заказы', 'orders.html'],
     ['stoplist', 'Стоп-лист', 'stoplist.html'],
-    ['hot-offers', 'Горячее', 'index.html#/hot-offers'],
-    ['expiry', 'Сроки', 'index.html#/expiry'],
+    ['hot-offers', 'Горячее', 'app.html#/hot-offers'],
+    ['expiry', 'Сроки', 'app.html#/expiry'],
     ['analytics', 'Аналитика', 'analytics.html'],
-    ['demo', 'Демо', 'index.html#/demo'],
+    ['demo', 'Демо', 'app.html#/demo'],
   ]
 
   const isAdmin = () => {
@@ -175,7 +175,7 @@ const UI = (() => {
   function shell(active) {
     const user = API.getUser()
     if (!user) {
-      location.replace('index.html#/login?next=' + encodeURIComponent(active))
+      location.replace('login.html?next=' + encodeURIComponent(active))
       return false
     }
     const app = document.getElementById('app')
@@ -194,7 +194,7 @@ const UI = (() => {
         <nav class="nav-links" aria-label="Основная навигация">${links}</nav>
         <div class="nav-actions">
           <span class="nav-user" title="${escapeHtml(user.email)}">${escapeHtml(user.name)}</span>
-          ${isAdmin() ? '<a class="btn btn-line btn-sm" href="index.html#/admin">Админ</a>' : ''}
+          ${isAdmin() ? '<a class="btn btn-line btn-sm" href="app.html#/admin">Админ</a>' : ''}
           <span class="label tag clock-chip" id="clockChip" hidden></span>
           <button type="button" class="btn btn-line btn-sm" data-logout>Выйти</button>
         </div>
@@ -202,7 +202,7 @@ const UI = (() => {
       </header>
       <nav class="menu" id="menu" aria-label="Мобильная навигация">
         ${links}<div class="divider"></div>
-        ${isAdmin() ? '<a href="index.html#/admin">Администрирование</a>' : ''}
+        ${isAdmin() ? '<a href="app.html#/admin">Администрирование</a>' : ''}
         <a href="index.html" data-logout>Выйти (${escapeHtml(user.name)})</a>
       </nav>`,
     )
@@ -252,7 +252,7 @@ const UI = (() => {
     } catch (error) {
       if (error.status === 401) {
         API.clearSession()
-        location.href = 'index.html#/login'
+        location.href = 'login.html'
       }
       throw error
     }
@@ -316,7 +316,7 @@ const UI = (() => {
       } catch (error) {
         if (error.status === 401) {
           API.clearSession()
-          location.href = 'index.html#/login'
+          location.href = 'login.html'
         }
       }
     }

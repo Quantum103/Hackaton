@@ -58,8 +58,11 @@ backend/
     scheduler/        — фоновые задачи
     clock/            — источник времени
   migrations/
-frontend/             — index.html + app.js, supplies.html, orders.html, stoplist.html, analytics.html,
+frontend/             — index.html (главная), login.html (вход), sclad.html (склад),
+                        supplies.html, orders.html, stoplist.html, analytics.html,
+                        app.html + app.js (меню, горячее, сроки, демо, регистрация, администрирование),
                         styles.css, api.js, mock-api.js, shared.js, vendor/
+auth-service/         — сервис авторизации на Go (пока со своими адресами, не по контракту)
 backend-contract/     — API.md и contract.go: что бэкенд должен отдавать фронту
 deploy/               — compose, Caddyfile, grafana provisioning
 ```

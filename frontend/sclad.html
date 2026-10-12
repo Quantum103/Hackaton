@@ -342,6 +342,7 @@
     .warehouse-table td, .warehouse-table th { padding: 10px 12px; }
     .stock-bar { width: 4px; }
   }
+  .stock-bar.empty { background: rgba(255, 255, 255, 0.12); box-shadow: none; }
 </style>
 </head>
 <body>
@@ -350,14 +351,15 @@
   <div class="nav-left">
     <a class="nav-logo" href="index.html">Stoplist</a>
     <ul class="nav-links">
-      <li><a href="warehouse.html" class="active">Склад</a></li>
-      <li><a>Поставки</a></li>
-      <li><a>Заказы</a></li>
-      <li><a>Стоп-лист</a></li>
-      <li><a>Горячее</a></li>
-      <li><a>Сроки</a></li>
-      <li><a>Аналитика</a></li>
-      <li><a>Демо</a></li>
+      <li><a href="sclad.html" class="active">Склад</a></li>
+      <li><a href="supplies.html">Поставки</a></li>
+      <li><a href="app.html#/menu">Меню</a></li>
+      <li><a href="orders.html">Заказы</a></li>
+      <li><a href="stoplist.html">Стоп-лист</a></li>
+      <li><a href="app.html#/hot-offers">Горячее</a></li>
+      <li><a href="app.html#/expiry">Сроки</a></li>
+      <li><a href="analytics.html">Аналитика</a></li>
+      <li><a href="app.html#/demo">Демо</a></li>
     </ul>
   </div>
   <button class="nav-dashboard-btn" onclick="window.location.href='index.html'">Дашборд</button>
@@ -390,7 +392,7 @@
           <th>Продукт</th>
           <th style="text-align:right">Доступно</th>
           <th style="text-align:center">Партий</th>
-          <th>Склады</th>
+          <th>Остаток партий</th>
           <th>Ближайший срок</th>
           <th>Статус</th>
         </tr>
@@ -400,8 +402,12 @@
   </div>
 </div>
 
+<script src="api.js"></script>
+<script src="mock-api.js"></script>
+<script src="shared.js"></script>
 <script>
-// ===== ДАННЫЕ ИЗ GO-СТРУКТУРЫ =====
+// ===== ДАННЫЕ С СЕРВЕРА =====
+// Список продуктов заполняется ответами API (см. loadServerData ниже).
 const serverData = {
   products: []
 };
@@ -427,7 +433,7 @@ function renderWarehouse() {
     let stockHtml = '<div class="stock-indicators">';
     const stock = product.stock || [];
     for (let i = 0; i < 3; i++) {
-      const s = stock[i] || { level: 'low', percent: 0 };
+      const s = stock[i] || { level: 'empty', percent: 0 }; // партии нет — нейтральная отметка, а не «мало»
       const height = Math.max((s.percent || 0) * 0.28, 4); // макс 28px
       const level = s.level || 'low';
       stockHtml += `
@@ -464,15 +470,15 @@ function renderWarehouse() {
 
     if (batchCount > 0) {
       batchesHtml = '<div class="batch-list">';
-      for (let b = 1; b <= batchCount; b++) {
+      (product.batchList || []).forEach((batch) => {
         batchesHtml += `
           <div class="batch-item">
-            <span class="batch-name">Партия #${b}</span>
-            <span>${product.available || '—'}</span>
-            <span>${product.deadline || '—'}</span>
+            <span class="batch-name">${batch.label}</span>
+            <span>${batch.quantity}</span>
+            <span>${batch.deadline}</span>
           </div>
         `;
-      }
+      });
       batchesHtml += '</div>';
     } else {
       batchesHtml = '<div style="color: var(--text-muted); padding: 6px 12px;">Нет партий</div>';
@@ -505,7 +511,95 @@ function toggleRow(idx) {
   }
 }
 
-document.addEventListener('DOMContentLoaded', renderWarehouse);
+// ===== ЗАГРУЗКА ДАННЫХ С СЕРВЕРА =====
+const STATUS_CLASS = { ok: 'ok', warning: 'warning', critical: 'critical', expired: 'danger' };
+
+async function loadServerData() {
+  let stock, batches;
+  try {
+    [stock, batches] = await Promise.all([API.get('/stock'), API.get('/expiry')]);
+  } catch (error) {
+    if (error.status === 401) {
+      API.clearSession();
+      window.location.replace('login.html?next=stock');
+    }
+    return;
+  }
+
+  serverData.products = stock.map((item) => {
+    // Партии продукта с остатком, ближайшие по сроку — первыми.
+    const own = batches.filter((batch) => batch.productId === item.productId && batch.qtyRemaining > 0);
+    return {
+      id: item.productId,
+      // Названия вводит пользователь, а шаблон вставляет их как HTML — экранируем.
+      name: UI.escapeHtml(item.name),
+      available: item.available > 0 ? UI.formatQuantity(item.available, item.unit) : '',
+      batches: own.length,
+      deadline: item.nearestExpiresAt ? UI.formatTimeLeft(item.nearestExpiresAt) : '',
+      status: STATUS_CLASS[item.status] || 'ok',
+      statusText: UI.STATUS[item.status] ? UI.STATUS[item.status].label : '',
+      // Три столбика — остаток в трёх ближайших по сроку партиях, в процентах от принятого.
+      stock: own.slice(0, 3).map((batch) => {
+        const percent = Math.round((batch.qtyRemaining / batch.qtyInitial) * 100);
+        return { percent, level: percent > 66 ? 'full' : percent > 33 ? 'half' : 'low' };
+      }),
+      batchList: own.map((batch) => ({
+        label: 'Поставка ' + UI.escapeHtml(batch.supplyNumber),
+        quantity: UI.formatQuantity(batch.qtyRemaining, item.unit) + ' из ' + UI.formatQuantity(batch.qtyInitial, item.unit),
+        deadline: UI.formatTimeLeft(batch.expiresAt),
+      })),
+    };
+  });
+  renderWarehouse();
+
+  if (serverData.products.length === 0) {
+    document.getElementById('warehouseBody').innerHTML =
+      '<tr><td colspan="6" style="padding:48px 12px; text-align:center; color:var(--text-muted)">Склад пуст. Продукты появятся здесь после приёмки первой поставки.</td></tr>';
+  }
+
+  // Ссылка вида sclad.html?open=<id продукта> сразу раскрывает его партии.
+  const openId = new URLSearchParams(location.search).get('open');
+  const index = serverData.products.findIndex((product) => product.id === openId);
+  if (index >= 0) {
+    toggleRow(index);
+    document.getElementById('row-' + index).scrollIntoView({ block: 'center' });
+  }
+}
+
+// ===== ВХОД / ВЫХОД =====
+// Кнопка в шапке: гостю — «Войти», вошедшему — «Выйти».
+function renderAuthButton() {
+  const anchor = document.querySelector('.nav-dashboard-btn');
+  if (!anchor) return;
+  const user = API.getUser();
+  const button = document.createElement('button');
+  button.className = 'nav-dashboard-btn';
+  button.style.marginLeft = '8px';
+  button.textContent = user ? 'Выйти' : 'Войти';
+  button.title = user ? user.name + ' · ' + user.email : '';
+  button.onclick = (event) => {
+    event.stopPropagation();
+    if (!user) {
+      window.location.href = 'login.html';
+      return;
+    }
+    API.post('/auth/logout').catch(() => {});
+    API.clearSession();
+    window.location.href = 'index.html';
+  };
+  anchor.after(button);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Склад доступен только после входа.
+  if (!API.getUser()) {
+    window.location.replace('login.html?next=stock');
+    return;
+  }
+  renderWarehouse();
+  renderAuthButton();
+  loadServerData();
+});
 </script>
 
 </body>

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stoplist — склад ресторана</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app" id="app">
+      <header class="nav">
+        <a class="logo" href="#/">Stoplist</a>
+        <nav class="nav-links" id="navLinks" aria-label="Основная навигация"></nav>
+        <div class="nav-actions" id="navActions"></div>
+        <button class="burger" id="burger" aria-label="Открыть меню" aria-expanded="false" aria-controls="menu">
+          <span></span>
+        </button>
+      </header>
+      <nav class="menu" id="menu" aria-label="Мобильная навигация"></nav>
+
+      <!-- Сюда app.js подставляет текущий экран -->
+      <div id="view"></div>
+    </div>
+
+    <noscript>Для работы приложения нужен JavaScript.</noscript>
+    <!-- api.js — обмен с бэкендом, app.js — экраны и маршруты -->
+    <script src="api.js"></script>
+    <script src="mock-api.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
