@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Поставки — Stoplist</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      /* Сцена страницы: конвейер, по которому едут ящики с поставкой */
+      .belt { position: absolute; left: -8%; right: -8%; bottom: 34px; height: 2px; background: rgba(255, 255, 255, 0.28); }
+      .belt::before, .belt::after {
+        content: ""; position: absolute; left: 0; right: 0; height: 2px;
+        background: repeating-linear-gradient(to right, rgba(255, 255, 255, 0.55) 0 14px, transparent 14px 34px);
+        animation: beltMove 1.1s linear infinite;
+      }
+      .belt::before { top: 9px; opacity: 0.5; }
+      .belt::after { top: 18px; opacity: 0.25; animation-duration: 1.6s; }
+      @keyframes beltMove { to { background-position: 34px 0; } }
+
+      .crate {
+        position: absolute; bottom: 36px; left: 0; width: var(--size, 44px); height: var(--size, 44px);
+        border: 1.5px solid rgba(255, 255, 255, 0.75); border-radius: 6px;
+        background: rgba(10, 10, 11, 0.55); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+        animation: crateRide var(--time, 9s) linear infinite; animation-delay: var(--delay, 0s);
+      }
+      /* Лента и крест-накрест, как на картонной коробке */
+      .crate::before { content: ""; position: absolute; left: 0; right: 0; top: 34%; height: 1.5px; background: rgba(255, 255, 255, 0.5); }
+      .crate::after { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1.5px; background: rgba(255, 255, 255, 0.3); }
+      .crate.is-new { background: #fff; border-color: #fff; animation: crateDrop 0.7s cubic-bezier(0.3, 1.4, 0.5, 1) both, crateRide 7s linear 0.7s 1 forwards; }
+      .crate.is-new::before, .crate.is-new::after { background: rgba(10, 10, 11, 0.35); }
+      @keyframes crateRide {
+        from { transform: translateX(-80px) translateY(0); }
+        25% { transform: translateX(calc(var(--span) * 0.25)) translateY(-2px); }
+        50% { transform: translateX(calc(var(--span) * 0.5)) translateY(0); }
+        75% { transform: translateX(calc(var(--span) * 0.75)) translateY(-2px); }
+        to { transform: translateX(calc(var(--span) + 80px)) translateY(0); }
+      }
+      @keyframes crateDrop { from { opacity: 0; translate: 40px -140px; rotate: -18deg; } to { opacity: 1; translate: 40px 0; rotate: 0deg; } }
+
+      /* Новая строка формы выезжает, удаляемая — схлопывается */
+      .supply-row.is-in { animation: rowIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
+      @keyframes rowIn { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+      .supply-row.is-out { animation: rowOut 0.22s ease both; }
+      @keyframes rowOut { to { opacity: 0; transform: translateX(14px); } }
+      tr.is-sub .item-list li { animation: rise 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; animation-delay: calc(var(--i, 0) * 40ms); }
+    </style>
+  </head>
+  <body>
+    <div class="app" id="app">
+      <main class="page" id="page">
+        <section class="hero-band rise">
+          <div class="panel-bg"><i></i><i></i><span class="grain"></span></div>
+          <div class="hero-text">
+            <div>
+              <span class="label home-badge">Приёмка</span>
+              <h1 class="page-title">Поставки</h1>
+              <p class="page-sub">Каждая строка поставки становится отдельной партией на складе со своим сроком годности.</p>
+              <p class="viewer-note label">Режим просмотра — изменять данные могут только администраторы</p>
+            </div>
+            <div class="hero-stats">
+              <div><div class="big" id="statSupplies">0</div><div class="small">поставок</div></div>
+              <div><div class="big" id="statBatches">0</div><div class="small">партий принято</div></div>
+              <div><div class="big" id="statProducts">0</div><div class="small">продуктов</div></div>
+            </div>
+          </div>
+          <div class="scene" id="scene" aria-hidden="true">
+            <i class="crate" style="--size:46px; --time:9s; --delay:0s"></i>
+            <i class="crate" style="--size:34px; --time:9s; --delay:-2.4s"></i>
+            <i class="crate" style="--size:54px; --time:9s; --delay:-4.6s"></i>
+            <i class="crate" style="--size:38px; --time:9s; --delay:-6.8s"></i>
+            <div class="belt"></div>
+          </div>
+        </section>
+
+        <form class="glass form rise" id="supplyForm" style="--i:2" novalidate data-admin>
+          <div class="form-head">
+            <h2 class="panel-title">Новая поставка</h2>
+            <div class="form-head-actions">
+              <button type="button" class="text-btn" id="templateBtn">Скачать шаблон</button>
+              <button type="button" class="btn btn-line btn-sm" id="importBtn">Импорт из Excel</button>
+              <input type="file" id="importFile" accept=".xlsx,.csv" hidden />
+            </div>
+          </div>
+          <label class="field" style="max-width: 280px">
+            <span class="label">Номер поставки</span>
+            <input class="input" id="supplyNumber" placeholder="П-0001" autocomplete="off" />
+          </label>
+          <div class="supply-rows">
+            <div class="supply-row is-head">
+              <span class="label">Продукт</span><span class="label">Единица</span><span class="label">Количество</span><span class="label">Срок хранения</span><span></span>
+            </div>
+            <div id="supplyRows"></div>
+          </div>
+          <datalist id="productNames"></datalist>
+          <div class="form-foot">
+            <button type="submit" class="btn btn-solid">Принять поставку</button>
+            <button type="button" class="btn btn-line" id="addRowBtn">Добавить продукт</button>
+            <span class="form-msg" id="supplyMsg" role="status"></span>
+          </div>
+        </form>
+
+        <div class="section-gap">
+          <div class="form-head" style="margin-bottom: 16px">
+            <h2 class="panel-title">История поставок</h2>
+            <span class="form-msg" id="historyMsg" role="status"></span>
+          </div>
+          <div id="historyBody"></div>
+        </div>
+      </main>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="mock-api.js"></script>
+    <script src="shared.js"></script>
+    <script>
+      ;(() => {
+        if (!UI.shell('supplies')) return
+        const { escapeHtml, formatQuantity, formatDateTime, normalize, UNIT_LABEL } = UI
+
+        const page = document.getElementById('page')
+        const form = document.getElementById('supplyForm')
+        const rows = document.getElementById('supplyRows')
+        const numberInput = document.getElementById('supplyNumber')
+        const formMsg = document.getElementById('supplyMsg')
+        const historyMsg = document.getElementById('historyMsg')
+        const historyBody = document.getElementById('historyBody')
+        const fileInput = document.getElementById('importFile')
+        const scene = document.getElementById('scene')
+
+        let products = []
+        // Поставку можно раскрыть сразу по ссылке вида supplies.html?open=…
+        let expandedId = new URLSearchParams(location.search).get('open')
+        let highlightId = null
+
+        // Ширина пути ящиков зависит от ширины сцены.
+        const fitScene = () => scene.style.setProperty('--span', scene.clientWidth + 'px')
+        fitScene()
+        window.addEventListener('resize', fitScene)
+
+        // Принятая поставка «падает» на конвейер белым ящиком и уезжает.
+        function dropCrate() {
+          if (UI.reducedMotion()) return
+          const crate = document.createElement('i')
+          crate.className = 'crate is-new'
+          crate.style.setProperty('--size', '50px')
+          scene.append(crate)
+          setTimeout(() => crate.remove(), 8000)
+        }
+
+        /* ---------- Форма ---------- */
+
+        function rowHtml(data, animate) {
+          const row = data || { name: '', unit: 'g', quantity: '', shelfLifeHours: '' }
+          return `<div class="supply-row${animate ? ' is-in' : ''}">
+            <div class="field"><input class="input" name="name" list="productNames" aria-label="Продукт" placeholder="Название продукта" autocomplete="off" value="${escapeHtml(row.name)}" /></div>
+            <div class="field"><select class="input" name="unit" aria-label="Единица">
+              ${Object.entries(UNIT_LABEL).map(([value, label]) => `<option value="${value}"${value === row.unit ? ' selected' : ''}>${label}</option>`).join('')}
+            </select></div>
+            <div class="field"><input class="input" name="quantity" type="number" min="1" inputmode="numeric" aria-label="Количество" placeholder="0" value="${escapeHtml(row.quantity)}" /></div>
+            <div class="field with-unit"><input class="input" name="shelfLifeHours" type="number" min="1" inputmode="numeric" aria-label="Срок хранения в часах" placeholder="0" value="${escapeHtml(row.shelfLifeHours)}" /><span>ч</span></div>
+            <button type="button" class="icon-btn" data-remove-row aria-label="Удалить продукт из поставки" title="Удалить продукт">×</button>
+          </div>`
+        }
+        rows.innerHTML = rowHtml()
+
+        const rowData = (row) => ({
+          name: row.querySelector('[name=name]').value.trim(),
+          unit: row.querySelector('[name=unit]').value,
+          quantity: row.querySelector('[name=quantity]').value,
+          shelfLifeHours: row.querySelector('[name=shelfLifeHours]').value,
+        })
+        const isBlank = (data) => !data.name && !data.quantity && !data.shelfLifeHours
+
+        // У уже известного продукта единица фиксирована — подставляем её и блокируем выбор.
+        function syncUnit(row) {
+          const known = products.find((product) => normalize(product.name) === normalize(row.querySelector('[name=name]').value))
+          const select = row.querySelector('[name=unit]')
+          if (known) select.value = known.unit
+          select.disabled = Boolean(known)
+        }
+
+        rows.addEventListener('input', (event) => {
+          if (event.target.name === 'name') syncUnit(event.target.closest('.supply-row'))
+          event.target.classList.remove('is-invalid')
+        })
+
+        form.addEventListener('click', (event) => {
+          const remove = event.target.closest('[data-remove-row]')
+          if (!remove) return
+          const row = remove.closest('.supply-row')
+          // Последнюю строку не убираем, а очищаем: в форме всегда есть куда вводить.
+          if (rows.children.length === 1) {
+            rows.innerHTML = rowHtml(null, true)
+            return
+          }
+          row.classList.add('is-out')
+          row.addEventListener('animationend', () => row.remove(), { once: true })
+          if (UI.reducedMotion()) row.remove()
+        })
+
+        document.getElementById('addRowBtn').addEventListener('click', () => {
+          rows.insertAdjacentHTML('beforeend', rowHtml(null, true))
+          rows.lastElementChild.querySelector('input').focus()
+        })
+
+        /* ---------- Импорт из Excel ---------- */
+
+        // Единицы из файла: «кг» и «л» переводятся в базовые граммы и миллилитры.
+        const UNIT_ALIASES = {
+          г: ['g', 1], гр: ['g', 1], g: ['g', 1], кг: ['g', 1000], kg: ['g', 1000],
+          мл: ['ml', 1], ml: ['ml', 1], л: ['ml', 1000], l: ['ml', 1000],
+          шт: ['pcs', 1], штук: ['pcs', 1], pcs: ['pcs', 1],
+        }
+
+        const loadScript = (src) =>
+          new Promise((resolve, reject) => {
+            const script = document.createElement('script')
+            script.src = src
+            script.onload = resolve
+            script.onerror = () => reject(new Error('Не удалось загрузить ' + src))
+            document.head.append(script)
+          })
+
+        function parseCsv(text) {
+          const lines = text.replace(/^﻿/, '').split(/\r?\n/)
+          // Русский Excel сохраняет CSV через точку с запятой, остальные — через запятую или табуляцию.
+          const separator = [';', '\t', ','].find((symbol) => lines[0].includes(symbol)) || ';'
+          return lines.map((line) => line.split(separator).map((cell) => cell.trim().replace(/^"(.*)"$/, '$1')))
+        }
+
+        async function readTable(file) {
+          if (/\.(csv|txt)$/i.test(file.name)) return parseCsv(await file.text())
+          // Библиотека для .xlsx подгружается только при первом импорте.
+          if (!window.readXlsxFile) await loadScript('vendor/read-excel-file.min.js')
+          const result = await window.readXlsxFile(file)
+          // Разные версии библиотеки отдают либо строки первого листа, либо список листов.
+          return Array.isArray(result[0]) || result.length === 0 ? result : result[0].data
+        }
+
+        // Колонки файла: продукт, количество, срок хранения в часах, единица (необязательно).
+        async function parseSupplyFile(file) {
+          const table = await readTable(file)
+          const toNumber = (value) => (typeof value === 'number' ? value : Number(String(value ?? '').replace(/\s/g, '').replace(',', '.')))
+          const parsed = []
+          const skipped = []
+          table.forEach((cells, index) => {
+            const [name, quantityCell, shelfCell, unitCell] = cells
+            if (cells.every((cell) => normalize(cell) === '')) return
+            let quantity = toNumber(quantityCell)
+            const shelfLifeHours = toNumber(shelfCell)
+            // Первая строка без чисел — заголовок таблицы.
+            if (index === 0 && Number.isNaN(quantity)) return
+            const known = products.find((product) => normalize(product.name) === normalize(name))
+            const alias = UNIT_ALIASES[normalize(unitCell).replace(/\.$/, '')]
+            const unit = known ? known.unit : alias ? alias[0] : 'g'
+            if (alias && alias[0] === unit) quantity *= alias[1]
+            if (normalize(name) === '' || !(quantity > 0) || !(shelfLifeHours > 0)) {
+              skipped.push(normalize(name) === '' ? 'строка ' + (index + 1) : String(name).trim())
+              return
+            }
+            parsed.push({ name: known ? known.name : String(name).trim(), unit, quantity: Math.round(quantity), shelfLifeHours: Math.round(shelfLifeHours) })
+          })
+          return { parsed, skipped }
+        }
+
+        // Шаблон в CSV с BOM и точкой с запятой — так его без настроек открывает русский Excel.
+        document.getElementById('templateBtn').addEventListener('click', () => {
+          const csv = [
+            ['Продукт', 'Количество', 'Срок хранения (ч)', 'Единица (г / мл / шт)'],
+            ['Моцарелла', 5000, 120, 'г'],
+            ['Сливки 33 %', 6000, 96, 'мл'],
+            ['Яйцо куриное', 180, 600, 'шт'],
+          ].map((row) => row.join(';')).join('\r\n')
+          const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }))
+          const link = document.createElement('a')
+          link.href = url
+          link.download = 'шаблон-поставки.csv'
+          link.click()
+          URL.revokeObjectURL(url)
+        })
+
+        document.getElementById('importBtn').addEventListener('click', () => fileInput.click())
+
+        fileInput.addEventListener('change', async () => {
+          const file = fileInput.files[0]
+          // Сбрасываем поле, чтобы тот же файл можно было выбрать повторно.
+          fileInput.value = ''
+          if (!file) return
+          try {
+            const { parsed, skipped } = await parseSupplyFile(file)
+            if (parsed.length === 0) {
+              UI.setMessage(formMsg, 'В файле не нашлось подходящих строк. Сверьте колонки с шаблоном', true)
+              return
+            }
+            // Импорт дополняет уже введённые строки, пустые строки-заготовки выбрасываются.
+            rows.querySelectorAll('.supply-row').forEach((row) => isBlank(rowData(row)) && row.remove())
+            rows.insertAdjacentHTML('beforeend', parsed.map((row) => rowHtml(row, true)).join(''))
+            rows.querySelectorAll('.supply-row').forEach((row, index) => {
+              row.style.animationDelay = index * 50 + 'ms'
+              syncUnit(row)
+            })
+            const note = skipped.length ? `, пропущено: ${skipped.length} (${skipped.slice(0, 5).join(', ')})` : ''
+            UI.setMessage(formMsg, `Импортировано строк: ${parsed.length}${note}`)
+          } catch {
+            UI.setMessage(formMsg, 'Не удалось прочитать файл. Поддерживаются .xlsx и .csv', true)
+          }
+        })
+
+        form.addEventListener('submit', async (event) => {
+          event.preventDefault()
+          let valid = true
+          const mark = (input, bad) => {
+            input.classList.toggle('is-invalid', bad)
+            if (bad) valid = false
+          }
+          mark(numberInput, !numberInput.value.trim())
+          const items = [...rows.querySelectorAll('.supply-row')].map((row) => {
+            const data = rowData(row)
+            mark(row.querySelector('[name=name]'), !data.name)
+            mark(row.querySelector('[name=quantity]'), !(Number(data.quantity) > 0))
+            mark(row.querySelector('[name=shelfLifeHours]'), !(Number(data.shelfLifeHours) > 0))
+            return { name: data.name, unit: data.unit, quantity: Number(data.quantity), shelfLifeHours: Number(data.shelfLifeHours) }
+          })
+          if (!valid) {
+            UI.setMessage(formMsg, 'Заполните номер поставки, продукт, количество и срок хранения в каждой строке', true)
+            return
+          }
+
+          const submit = form.querySelector('[type=submit]')
+          submit.disabled = true
+          try {
+            const supply = await UI.call(API.post('/supplies', { number: numberInput.value.trim(), items }))
+            UI.setMessage(formMsg, `Поставка ${supply.number} принята, партий создано: ${supply.items.length}`)
+            numberInput.value = ''
+            rows.innerHTML = rowHtml(null, true)
+            highlightId = supply.id
+            dropCrate()
+            await refresh(true)
+          } catch (error) {
+            UI.setMessage(formMsg, error.message, true)
+          } finally {
+            submit.disabled = false
+          }
+        })
+
+        /* ---------- История ---------- */
+
+        async function loadProducts() {
+          products = await UI.call(API.get('/products')).catch(() => [])
+          document.getElementById('productNames').innerHTML = products.map((product) => `<option value="${escapeHtml(product.name)}"></option>`).join('')
+          rows.querySelectorAll('.supply-row').forEach(syncUnit)
+        }
+
+        async function loadHistory() {
+          let supplies
+          try {
+            supplies = await UI.call(API.get('/supplies'))
+          } catch (error) {
+            historyBody.innerHTML = UI.emptyState('Не удалось загрузить поставки', escapeHtml(error.message))
+            return
+          }
+
+          UI.countUp(document.getElementById('statSupplies'), supplies.length)
+          UI.countUp(document.getElementById('statBatches'), supplies.reduce((sum, supply) => sum + supply.items.length, 0))
+          UI.countUp(document.getElementById('statProducts'), new Set(supplies.flatMap((supply) => supply.items.map((item) => item.productId))).size)
+
+          if (supplies.length === 0) {
+            historyBody.innerHTML = UI.emptyState('Поставок пока не было', 'Заполните форму выше или импортируйте файл Excel.')
+            return
+          }
+          historyBody.innerHTML = `<div class="glass table-wrap rise"><table class="table">
+            <thead><tr><th class="col-chev"></th><th>Номер</th><th>Получена</th><th class="num">Позиций</th><th>Состав</th><th></th></tr></thead>
+            <tbody>
+              ${supplies
+                .map((supply, index) => {
+                  const open = supply.id === expandedId
+                  return `<tr class="is-click rise" ${UI.order(index)} data-supply="${escapeHtml(supply.id)}" data-number="${escapeHtml(supply.number)}">
+                    <td class="col-chev">${UI.chevron(open)}</td>
+                    <td class="strong nowrap">${escapeHtml(supply.number)}</td>
+                    <td class="dim nowrap">${formatDateTime(supply.createdAt)}</td>
+                    <td class="num">${supply.items.length}</td>
+                    <td class="dim">${supply.items.map((item) => escapeHtml(item.name)).join(' · ')}</td>
+                    <td class="num"><button type="button" class="btn btn-sm btn-line" data-delete-supply data-admin>Удалить поставку</button></td>
+                  </tr>
+                  ${
+                    open
+                      ? `<tr class="is-sub"><td></td><td colspan="5"><ul class="item-list">
+                          ${supply.items
+                            .map(
+                              (item, itemIndex) => `<li ${UI.order(itemIndex)}>
+                                <span>${escapeHtml(item.name)}</span>
+                                <span>${formatQuantity(item.quantity, item.unit)}</span>
+                                <span class="dim">годен до ${formatDateTime(item.expiresAt)}</span>
+                                <button type="button" class="btn btn-sm btn-line" data-admin data-delete-item="${escapeHtml(item.productId)}" data-name="${escapeHtml(item.name)}" data-supply-id="${escapeHtml(supply.id)}" data-number="${escapeHtml(supply.number)}">Удалить продукт</button>
+                              </li>`,
+                            )
+                            .join('')}
+                        </ul></td></tr>`
+                      : ''
+                  }`
+                })
+                .join('')}
+            </tbody>
+          </table></div>`
+
+          if (highlightId) {
+            UI.flash([...historyBody.querySelectorAll('tr[data-supply]')].find((row) => row.dataset.supply === highlightId))
+            highlightId = null
+          }
+        }
+
+        // silent — тихое обновление: без повторного проигрывания анимаций появления.
+        async function refresh(silent) {
+          page.classList.toggle('no-anim', Boolean(silent))
+          await Promise.all([loadProducts(), loadHistory()])
+        }
+
+        historyBody.addEventListener('click', async (event) => {
+          const deleteItem = event.target.closest('[data-delete-item]')
+          const deleteSupply = event.target.closest('[data-delete-supply]')
+          const button = deleteItem || deleteSupply
+
+          if (button) {
+            if (!UI.confirmClick(button)) return
+            const row = button.closest('tr[data-supply]')
+            const supplyId = deleteItem ? deleteItem.dataset.supplyId : row.dataset.supply
+            const number = deleteItem ? deleteItem.dataset.number : row.dataset.number
+            button.disabled = true
+            try {
+              if (deleteItem) {
+                await UI.call(API.del('/supplies/' + encodeURIComponent(supplyId) + '/items/' + encodeURIComponent(deleteItem.dataset.deleteItem)))
+                UI.setMessage(historyMsg, `Продукт «${deleteItem.dataset.name}» удалён из поставки ${number}`)
+              } else {
+                await UI.call(API.del('/supplies/' + encodeURIComponent(supplyId)))
+                UI.setMessage(historyMsg, `Поставка ${number} удалена`)
+              }
+              await refresh(true)
+            } catch (error) {
+              UI.setMessage(historyMsg, error.message, true)
+              button.disabled = false
+            }
+            return
+          }
+
+          const row = event.target.closest('tr[data-supply]')
+          if (!row) return
+          expandedId = expandedId === row.dataset.supply ? null : row.dataset.supply
+          page.classList.add('no-anim')
+          loadHistory()
+        })
+
+        // Взведённая кнопка удаления сбрасывается, если уйти с неё.
+        historyBody.addEventListener('focusout', (event) => {
+          if (event.target.dataset && event.target.dataset.armed) {
+            clearTimeout(Number(event.target.dataset.armed))
+            UI.disarm(event.target)
+          }
+        })
+
+        historyBody.innerHTML = UI.loading()
+        refresh(false)
+        UI.live(() => refresh(true))
+      })()
+    </script>
+  </body>
+</html>

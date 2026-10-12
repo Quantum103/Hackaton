@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Заказы — Stoplist</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      /* Сцена страницы: тарелки, которые кружат вокруг «раздачи» */
+      .pass { position: absolute; inset: 0; display: grid; place-items: center; }
+      .ring { position: absolute; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.22); }
+      .ring.r1 { width: 86px; height: 86px; }
+      .ring.r2 { width: 150px; height: 150px; border-style: dashed; animation: spin 40s linear infinite; }
+      .ring.r3 { width: 214px; height: 214px; opacity: 0.6; }
+      .hub {
+        width: 46px; height: 46px; border-radius: 50%; background: #fff;
+        box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.08), 0 0 40px rgba(255, 255, 255, 0.35);
+        animation: hubBeat 2.6s ease-in-out infinite;
+      }
+      .hub.is-hit { animation: hubHit 0.5s ease; }
+      @keyframes hubBeat { 50% { transform: scale(1.08); box-shadow: 0 0 0 16px rgba(255, 255, 255, 0.04), 0 0 60px rgba(255, 255, 255, 0.45); } }
+      @keyframes hubHit { 30% { transform: scale(1.35); } }
+      .orbit { position: absolute; width: var(--d); height: var(--d); animation: spin var(--t) linear infinite; animation-delay: var(--delay, 0s); }
+      .orbit.is-back { animation-direction: reverse; }
+      .plate {
+        position: absolute; left: 50%; top: 0; width: var(--s, 18px); height: var(--s, 18px); margin: calc(var(--s, 18px) / -2) 0 0 calc(var(--s, 18px) / -2);
+        border-radius: 50%; background: rgba(10, 10, 11, 0.7); border: 1.5px solid rgba(255, 255, 255, 0.8);
+      }
+      .plate::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.4); }
+      .plate.is-full { background: #fff; border-color: #fff; }
+
+      /* Карточки блюд */
+      .dish { transition: border-color 0.2s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s ease; }
+      .dish:not(.is-stopped):hover { transform: translateY(-3px); border-color: rgba(255, 255, 255, 0.26); }
+      .dish.in-cart { border-color: rgba(255, 255, 255, 0.5); }
+      .dish .qty span.is-bump, #cartCount.is-bump { animation: bump 0.3s ease; }
+      @keyframes bump { 40% { transform: scale(1.45); } }
+      .dish .qty span { display: inline-block; }
+      /* На блюдах в стопе медленно ходит косая штриховка */
+      .dish.is-stopped { background-image: repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.035) 0 2px, transparent 2px 12px); background-size: 34px 34px; animation: stripes 2.4s linear infinite; }
+      @keyframes stripes { to { background-position: 34px 0; } }
+
+      .cart-head { display: flex; align-items: center; justify-content: space-between; }
+      #cartCount { display: inline-grid; place-items: center; min-width: 26px; height: 26px; padding: 0 8px; border-radius: 13px; background: #fff; color: #0a0a0b; font-size: 12.5px; font-weight: 600; }
+      .cart-lines li { animation: rise 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+      .no-anim .cart-lines li { animation: none; }
+      .cart-warning { animation: shake 0.4s ease; }
+      @keyframes shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+      /* Галочка, которая прорисовывается после успешного заказа */
+      .done { display: none; align-items: center; gap: 10px; font-size: 13.5px; }
+      .done.is-on { display: flex; }
+      .done svg { width: 22px; height: 22px; flex: 0 0 auto; }
+      .done circle { fill: none; stroke: rgba(255, 255, 255, 0.35); stroke-width: 1.5; }
+      .done path { fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 24; stroke-dashoffset: 24; }
+      .done.is-on path { animation: draw 0.5s 0.1s ease forwards; }
+      @keyframes draw { to { stroke-dashoffset: 0; } }
+    </style>
+  </head>
+  <body>
+    <div class="app" id="app">
+      <main class="page" id="page">
+        <section class="hero-band rise">
+          <div class="panel-bg"><i></i><i></i><span class="grain"></span></div>
+          <div class="hero-text">
+            <div>
+              <span class="label home-badge">Касса</span>
+              <h1 class="page-title">Заказы</h1>
+              <p class="page-sub">Соберите заказ из блюд меню. При оформлении продукты списываются со склада, начиная с партий с самым ранним сроком.</p>
+              <p class="viewer-note label">Режим просмотра — изменять данные могут только администраторы</p>
+            </div>
+            <div class="hero-stats">
+              <div><div class="big" id="statAccepted">0</div><div class="small">заказов оформлено</div></div>
+              <div><div class="big" id="statRejected">0</div><div class="small">отклонено</div></div>
+              <div><div class="big" id="statAvailable">0</div><div class="small" id="statAvailableLabel">блюд доступно</div></div>
+            </div>
+          </div>
+          <div class="scene" aria-hidden="true">
+            <div class="pass">
+              <span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span>
+              <div class="orbit" style="--d:86px; --t:9s"><i class="plate is-full" style="--s:12px"></i></div>
+              <div class="orbit is-back" style="--d:150px; --t:16s"><i class="plate"></i></div>
+              <div class="orbit is-back" style="--d:150px; --t:16s; --delay:-8s"><i class="plate is-full" style="--s:14px"></i></div>
+              <div class="orbit" style="--d:214px; --t:24s"><i class="plate" style="--s:22px"></i></div>
+              <div class="orbit" style="--d:214px; --t:24s; --delay:-9s"><i class="plate is-full" style="--s:12px"></i></div>
+              <div class="orbit" style="--d:214px; --t:24s; --delay:-17s"><i class="plate" style="--s:16px"></i></div>
+              <div class="hub" id="hub"></div>
+            </div>
+          </div>
+        </section>
+
+        <div id="ordersBody"></div>
+
+        <div class="section-gap">
+          <h2 class="panel-title" style="margin-bottom: 16px">История заказов</h2>
+          <div id="ordersHistory"></div>
+        </div>
+      </main>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="mock-api.js"></script>
+    <script src="shared.js"></script>
+    <script>
+      ;(() => {
+        if (!UI.shell('orders')) return
+        const { escapeHtml, formatQuantity, formatDateTime, portionsLabel, STATUS } = UI
+
+        const page = document.getElementById('page')
+        const body = document.getElementById('ordersBody')
+        const history = document.getElementById('ordersHistory')
+        const hub = document.getElementById('hub')
+        const cart = new Map() // dishId → число порций
+        let menu = []
+        let validation = 0
+        let highlightOrder = null
+        let doneText = '' // подтверждение последнего заказа переживает автообновление
+
+        const limitText = (limit) =>
+          `${escapeHtml(limit.productName)}: нужно ${formatQuantity(limit.required, limit.unit)}, есть ${formatQuantity(limit.available, limit.unit)}`
+        const shortageText = (item) =>
+          `${escapeHtml(item.productName)} — не хватает ${formatQuantity(item.missing, item.unit)} (нужно ${formatQuantity(item.required, item.unit)}, есть ${formatQuantity(item.available, item.unit)})`
+        const cartItems = () => [...cart].map(([dishId, portions]) => ({ dishId, portions }))
+
+        function bump(node) {
+          if (!node) return
+          node.classList.remove('is-bump')
+          void node.offsetWidth
+          node.classList.add('is-bump')
+        }
+
+        /* ---------- История ---------- */
+
+        async function loadHistory() {
+          let orders
+          try {
+            orders = await UI.call(API.get('/orders'))
+          } catch (error) {
+            history.innerHTML = UI.emptyState('Не удалось загрузить заказы', escapeHtml(error.message))
+            return
+          }
+          UI.countUp(document.getElementById('statAccepted'), orders.filter((order) => order.status === 'accepted').length)
+          UI.countUp(document.getElementById('statRejected'), orders.filter((order) => order.status === 'rejected').length)
+
+          if (orders.length === 0) {
+            history.innerHTML = UI.emptyState('Заказов пока не было', 'Оформленные и отклонённые заказы появятся здесь.')
+            return
+          }
+          history.innerHTML = `<div class="glass table-wrap rise"><table class="table">
+            <thead><tr><th>№</th><th>Время</th><th>Состав</th><th>Статус</th><th>Списание</th></tr></thead>
+            <tbody>
+              ${orders
+                .slice(0, 40)
+                .map((order, index) => {
+                  const accepted = order.status === 'accepted'
+                  const details = accepted
+                    ? order.writeoffs.map((item) => `${escapeHtml(item.productName)} ${formatQuantity(item.quantity, item.unit)} из ${escapeHtml(item.supplyNumber)}`).join(' · ')
+                    : order.shortages.map((item) => `${escapeHtml(item.productName)}: не хватило ${formatQuantity(item.missing, item.unit)}`).join(' · ')
+                  return `<tr class="rise" ${UI.order(index)} data-order="${order.number}">
+                    <td class="strong">${order.number}</td>
+                    <td class="dim nowrap">${formatDateTime(order.createdAt)}</td>
+                    <td>${order.items.map((item) => `${escapeHtml(item.name)} × ${item.portions}`).join(' · ')}</td>
+                    <td>${UI.badge(accepted ? 'Оформлен' : 'Отклонён', accepted ? STATUS.ok.color : STATUS.expired.color)}</td>
+                    <td class="dim">${details}</td>
+                  </tr>`
+                })
+                .join('')}
+            </tbody>
+          </table></div>`
+
+          if (highlightOrder) {
+            UI.flash(history.querySelector(`tr[data-order="${highlightOrder}"]`))
+            highlightOrder = null
+          }
+        }
+
+        /* ---------- Меню и корзина ---------- */
+
+        function renderCart(animate) {
+          const lines = cartItems().map((item) => ({ dish: menu.find((dish) => dish.dishId === item.dishId), portions: item.portions })).filter((line) => line.dish)
+          const node = document.getElementById('cartLines')
+          if (!node) return
+          page.classList.toggle('no-anim', !animate)
+          node.innerHTML = lines.length
+            ? lines.map((line) => `<li><span>${escapeHtml(line.dish.name)}</span><span class="dim">× ${line.portions}</span></li>`).join('')
+            : '<li class="dim">Корзина пуста — добавьте блюда слева</li>'
+          document.getElementById('cartSubmit').disabled = lines.length === 0
+          document.getElementById('cartCount').textContent = lines.reduce((sum, line) => sum + line.portions, 0)
+          body.querySelectorAll('[data-qty]').forEach((qty) => {
+            qty.textContent = cart.get(qty.dataset.qty) || 0
+            qty.closest('.dish').classList.toggle('in-cart', cart.has(qty.dataset.qty))
+          })
+        }
+
+        // Корзина проверяется на лету: нехватка видна до нажатия «Оформить».
+        async function validateCart() {
+          const warning = document.getElementById('cartWarning')
+          if (!warning) return
+          const ticket = ++validation
+          if (cart.size === 0) {
+            warning.innerHTML = ''
+            return
+          }
+          try {
+            const result = await UI.call(API.post('/orders/validate', { items: cartItems() }))
+            if (ticket !== validation) return
+            const html = result.ok ? '' : `<p class="label">Не хватит продуктов</p><ul>${result.shortages.map((item) => `<li>${shortageText(item)}</li>`).join('')}</ul>`
+            if (warning.innerHTML !== html) warning.innerHTML = html
+          } catch {
+            if (ticket === validation) warning.innerHTML = ''
+          }
+        }
+
+        async function loadMenu(silent) {
+          try {
+            menu = await UI.call(API.get('/menu'))
+          } catch (error) {
+            body.innerHTML = UI.emptyState('Не удалось загрузить меню', escapeHtml(error.message))
+            return
+          }
+          const available = menu.filter((dish) => !dish.stopped).length
+          UI.countUp(document.getElementById('statAvailable'), available)
+          document.getElementById('statAvailableLabel').textContent = `блюд доступно из ${menu.length}`
+
+          if (menu.length === 0) {
+            body.innerHTML = UI.emptyState('В меню пока нет блюд', 'Чтобы принимать заказы, добавьте блюда и их состав.', '<a class="btn btn-solid" href="index.html#/menu">Перейти в меню</a>')
+            return
+          }
+          // Блюда, которых больше нет в меню, из корзины убираются.
+          for (const dishId of [...cart.keys()]) if (!menu.some((dish) => dish.dishId === dishId)) cart.delete(dishId)
+
+          page.classList.toggle('no-anim', Boolean(silent))
+          const message = document.getElementById('cartMsg')
+          const kept = message ? { text: message.textContent, className: message.className } : null
+
+          body.innerHTML = `<div class="orders">
+            <div class="dish-grid">
+              ${menu
+                .map(
+                  (dish, index) => `<article class="glass dish rise${dish.stopped ? ' is-stopped' : ''}" ${UI.order(index)}>
+                    <div class="dish-top">
+                      ${UI.badge(dish.stopped ? 'В стопе' : 'Доступно', dish.stopped ? STATUS.expired.color : STATUS.ok.color)}
+                      ${dish.hot ? '<span class="label tag hot-tag">Горячее</span>' : ''}
+                      <span class="dim">${dish.stopped ? '' : portionsLabel(dish.availablePortions)}</span>
+                    </div>
+                    <h3>${escapeHtml(dish.name)}</h3>
+                    <p class="dish-note">${dish.stopped ? 'Нет: ' + limitText(dish.stopReason) : dish.ingredients.map((item) => escapeHtml(item.name)).join(', ')}</p>
+                    <div class="qty" data-admin>
+                      <button type="button" class="icon-btn" data-step="-1" data-dish="${escapeHtml(dish.dishId)}" aria-label="Убрать порцию">−</button>
+                      <span data-qty="${escapeHtml(dish.dishId)}">0</span>
+                      <button type="button" class="icon-btn" data-step="1" data-dish="${escapeHtml(dish.dishId)}" aria-label="Добавить порцию"${dish.stopped ? ' disabled' : ''}>+</button>
+                    </div>
+                  </article>`,
+                )
+                .join('')}
+            </div>
+            <aside class="glass cart rise" style="--i:3" data-admin>
+              <div class="cart-head"><h2 class="panel-title">Корзина</h2><span id="cartCount">0</span></div>
+              <ul class="cart-lines" id="cartLines"></ul>
+              <div class="cart-warning" id="cartWarning"></div>
+              <button type="button" class="btn btn-solid" id="cartSubmit">Оформить заказ</button>
+              <button type="button" class="text-btn" id="cartClear">Очистить корзину</button>
+              <div class="done${doneText ? ' is-on' : ''}" id="cartDone"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" /><path d="M7 12.5l3.4 3.4L17.2 9" /></svg><span>${escapeHtml(doneText)}</span></div>
+              <span class="form-msg" id="cartMsg" role="status"></span>
+            </aside>
+          </div>`
+          if (kept) Object.assign(document.getElementById('cartMsg'), { textContent: kept.text, className: kept.className })
+          renderCart(false)
+          validateCart()
+        }
+
+        body.addEventListener('click', async (event) => {
+          const step = event.target.closest('[data-step]')
+          if (step) {
+            const direction = Number(step.dataset.step)
+            const next = Math.max(0, (cart.get(step.dataset.dish) || 0) + direction)
+            if (next === 0) cart.delete(step.dataset.dish)
+            else cart.set(step.dataset.dish, next)
+            UI.setMessage(document.getElementById('cartMsg'), '')
+            doneText = ''
+            document.getElementById('cartDone').classList.remove('is-on')
+            renderCart(true)
+            bump(step.parentElement.querySelector('[data-qty]'))
+            // Добавленная порция «летит» в корзину.
+            if (direction > 0) {
+              UI.fly(step, document.querySelector('.cart'))
+              setTimeout(() => bump(document.getElementById('cartCount')), 520)
+            }
+            validateCart()
+            return
+          }
+
+          if (event.target.closest('#cartClear')) {
+            cart.clear()
+            renderCart(true)
+            validateCart()
+            return
+          }
+
+          const submit = event.target.closest('#cartSubmit')
+          if (!submit) return
+          submit.disabled = true
+          let text = ''
+          let isError = false
+          doneText = ''
+          try {
+            const order = await UI.call(API.post('/orders', { items: cartItems() }))
+            cart.clear()
+            highlightOrder = order.number
+            doneText = `Заказ №${order.number} оформлен, продукты списаны`
+            hub.classList.remove('is-hit')
+            void hub.offsetWidth
+            hub.classList.add('is-hit')
+          } catch (error) {
+            isError = true
+            const shortages = error.data && error.data.shortages
+            text = shortages ? 'Заказ отклонён: ' + shortages.map((item) => `${item.productName} — не хватает ${formatQuantity(item.missing, item.unit)}`).join('; ') : error.message
+          }
+          // Остатки изменились — перерисовываем меню и историю, затем показываем итог.
+          await Promise.all([loadMenu(true), loadHistory()])
+          UI.setMessage(document.getElementById('cartMsg'), text, isError)
+        })
+
+        body.innerHTML = UI.loading()
+        history.innerHTML = UI.loading()
+        Promise.all([loadMenu(false), loadHistory()])
+        UI.live(() => {
+          page.classList.add('no-anim')
+          loadMenu(true)
+          loadHistory()
+        })
+      })()
+    </script>
+  </body>
+</html>

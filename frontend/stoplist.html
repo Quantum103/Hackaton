@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Стоп-лист — Stoplist</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      /* Сцена страницы: радар. Каждое блюдо — точка: в стопе — ближе к центру и мигает */
+      .radar { position: absolute; top: 50%; left: 50%; width: 220px; height: 220px; transform: translate(-50%, -50%); border-radius: 50%; }
+      .radar::before {
+        content: ""; position: absolute; inset: 0; border-radius: 50%;
+        background:
+          radial-gradient(circle, transparent 0 22%, rgba(255, 255, 255, 0.2) 22% 22.6%, transparent 22.6% 49%, rgba(255, 255, 255, 0.2) 49% 49.6%, transparent 49.6% 76%, rgba(255, 255, 255, 0.2) 76% 76.6%, transparent 76.6%),
+          linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14)) center / 100% 1px no-repeat,
+          linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14)) center / 1px 100% no-repeat;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+      }
+      .sweep {
+        position: absolute; inset: 0; border-radius: 50%;
+        background: conic-gradient(from 0deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0) 28%, rgba(255, 255, 255, 0) 100%);
+        animation: spin 4.5s linear infinite reverse;
+      }
+      .blip {
+        position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; margin: -4.5px; border-radius: 50%;
+        background: var(--c, #fff); transform: rotate(var(--a)) translateY(calc(var(--r) * -1));
+        transition: transform 0.9s cubic-bezier(0.16, 1, 0.3, 1), background 0.4s ease;
+      }
+      .blip.is-stop::after {
+        content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 1.5px solid var(--c);
+        animation: ping 1.5s ease-out infinite; animation-delay: var(--d, 0s);
+      }
+      @keyframes ping { from { transform: scale(0.6); opacity: 1; } to { transform: scale(3.2); opacity: 0; } }
+      .radar-legend { position: absolute; left: 0; right: 0; bottom: -6px; display: flex; justify-content: center; gap: 16px; font-size: 11px; color: var(--ink-soft); }
+      .radar-legend span::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--c); }
+
+      /* Строки блюд в стопе: по ним медленно проходит «сканирующая» полоса */
+      .stop-row { position: relative; }
+      .stop-row td:first-child { position: relative; }
+      .stop-row td:first-child::before {
+        content: ""; position: absolute; left: 0; top: 18%; bottom: 18%; width: 2px; border-radius: 2px;
+        background: #ff5f5f; animation: blink 1.4s ease-in-out infinite;
+      }
+      @keyframes blink { 50% { opacity: 0.25; } }
+
+      /* Запас блюда: полоска из трёх делений */
+      .pips { display: inline-flex; gap: 4px; vertical-align: middle; margin-right: 10px; }
+      .pips i { width: 16px; height: 5px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); }
+      .pips i.is-on { background: #f2c24b; animation: pipIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; animation-delay: calc(var(--i, 0) * 90ms + 200ms); }
+      .no-anim .pips i.is-on { animation: none; }
+      @keyframes pipIn { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+      .all-clear { display: grid; justify-items: center; gap: 14px; }
+      .all-clear svg { width: 46px; height: 46px; }
+      .all-clear circle { fill: none; stroke: rgba(255, 255, 255, 0.3); stroke-width: 1.2; }
+      .all-clear path { fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 30; stroke-dashoffset: 30; animation: draw 0.7s 0.3s ease forwards; }
+      @keyframes draw { to { stroke-dashoffset: 0; } }
+    </style>
+  </head>
+  <body>
+    <div class="app" id="app">
+      <main class="page" id="page">
+        <section class="hero-band rise">
+          <div class="panel-bg"><i></i><i></i><span class="grain"></span></div>
+          <div class="hero-text">
+            <div>
+              <span class="label home-badge" id="stopBadge">Мониторинг меню</span>
+              <h1 class="page-title">Стоп-лист</h1>
+              <p class="page-sub">Блюда, которые нельзя приготовить из текущих остатков. Список собирается автоматически по составу блюд.</p>
+            </div>
+            <div class="hero-stats">
+              <div><div class="big" id="statStopped">0</div><div class="small">в стопе</div></div>
+              <div><div class="big" id="statRunning">0</div><div class="small">доступны, но заканчиваются</div></div>
+              <div><div class="big" id="statAvailable">0</div><div class="small" id="statAvailableLabel">всего доступно</div></div>
+            </div>
+          </div>
+          <div class="scene" aria-hidden="true">
+            <div class="radar" id="radar"><div class="sweep"></div></div>
+            <div class="radar-legend">
+              <span style="--c:#ff5f5f">в стопе</span><span style="--c:#f2c24b">заканчивается</span><span style="--c:#e9e9e9">доступно</span>
+            </div>
+          </div>
+        </section>
+
+        <div id="stopBody"></div>
+      </main>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="mock-api.js"></script>
+    <script src="shared.js"></script>
+    <script>
+      ;(() => {
+        if (!UI.shell('stoplist')) return
+        const { escapeHtml, formatQuantity, formatDateTime, portionsLabel, STATUS } = UI
+
+        const page = document.getElementById('page')
+        const body = document.getElementById('stopBody')
+        const radar = document.getElementById('radar')
+        const blips = new Map() // dishId → точка на радаре
+
+        const limitText = (limit) =>
+          `${escapeHtml(limit.productName)}: нужно ${formatQuantity(limit.required, limit.unit)}, есть ${formatQuantity(limit.available, limit.unit)}`
+        const runningText = (limit) =>
+          `${escapeHtml(limit.productName)}: уходит ${formatQuantity(limit.required, limit.unit)} на порцию, осталось ${formatQuantity(limit.available, limit.unit)}`
+
+        // Точки не пересоздаются при обновлении, а переезжают: блюдо, уходящее в стоп, сползает к центру.
+        function drawRadar(menu) {
+          const seen = new Set()
+          menu.forEach((dish, index) => {
+            seen.add(dish.dishId)
+            let blip = blips.get(dish.dishId)
+            if (!blip) {
+              blip = document.createElement('i')
+              blip.className = 'blip'
+              // Угол «золотого сечения» равномерно разбрасывает точки по кругу.
+              blip.style.setProperty('--a', (index * 137.5) % 360 + 'deg')
+              blip.style.setProperty('--d', (index % 5) * -0.3 + 's')
+              radar.append(blip)
+              blips.set(dish.dishId, blip)
+            }
+            const state = dish.stopped ? 'stop' : dish.availablePortions <= 3 ? 'low' : 'ok'
+            blip.classList.toggle('is-stop', state === 'stop')
+            blip.style.setProperty('--c', state === 'stop' ? STATUS.expired.color : state === 'low' ? STATUS.warning.color : STATUS.ok.color)
+            blip.style.setProperty('--r', (state === 'stop' ? 24 : state === 'low' ? 56 : 88) + 'px')
+            blip.title = dish.name
+          })
+          for (const [dishId, blip] of blips) {
+            if (seen.has(dishId)) continue
+            blip.remove()
+            blips.delete(dishId)
+          }
+        }
+
+        async function render(silent) {
+          let menu
+          try {
+            menu = await UI.call(API.get('/menu'))
+          } catch (error) {
+            body.innerHTML = UI.emptyState('Не удалось загрузить стоп-лист', escapeHtml(error.message))
+            return
+          }
+          page.classList.toggle('no-anim', Boolean(silent))
+
+          const stopped = menu.filter((dish) => dish.stopped)
+          // Блюда, которых осталось на несколько порций, — кандидаты в стоп-лист.
+          const running = menu.filter((dish) => !dish.stopped && dish.availablePortions <= 3).sort((a, b) => a.availablePortions - b.availablePortions)
+
+          UI.countUp(document.getElementById('statStopped'), stopped.length)
+          UI.countUp(document.getElementById('statRunning'), running.length)
+          UI.countUp(document.getElementById('statAvailable'), menu.length - stopped.length)
+          document.getElementById('statAvailableLabel').textContent = `всего доступно из ${menu.length}`
+          document.getElementById('stopBadge').textContent = stopped.length ? `В стопе: ${UI.plural(stopped.length, 'блюдо', 'блюда', 'блюд')}` : 'Мониторинг меню'
+          drawRadar(menu)
+
+          if (menu.length === 0) {
+            body.innerHTML = UI.emptyState('В меню пока нет блюд', 'Стоп-лист строится по составу блюд. Добавьте блюда — и он начнёт работать.', '<a class="btn btn-solid" href="index.html#/menu">Перейти в меню</a>')
+            return
+          }
+
+          const stoppedHtml = stopped.length
+            ? `<div class="glass table-wrap rise"><table class="table">
+                <thead><tr><th>Блюдо</th><th>Причина</th><th>В стопе с</th><th></th></tr></thead>
+                <tbody>${stopped
+                  .map(
+                    (dish, index) => `<tr class="stop-row rise" ${UI.order(index)}>
+                      <td class="strong">${escapeHtml(dish.name)}</td>
+                      <td>${limitText(dish.stopReason)}</td>
+                      <td class="dim nowrap">${formatDateTime(dish.stoppedSince)}</td>
+                      <td class="num"><a class="btn btn-sm btn-line" href="supplies.html" data-admin>Довезти продукт</a></td>
+                    </tr>`,
+                  )
+                  .join('')}</tbody>
+              </table></div>`
+            : `<div class="glass empty rise"><div class="all-clear"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="22" /><path d="M14 25l7 7 13-15" /></svg><h3>Стоп-лист пуст</h3></div><p>Все блюда меню можно приготовить.</p></div>`
+
+          const runningHtml = running.length
+            ? `<h2 class="panel-title rise" style="margin:36px 0 16px">Ещё доступны, но заканчиваются</h2>
+              <div class="glass table-wrap rise"><table class="table">
+                <thead><tr><th>Блюдо</th><th>Статус</th><th>Можно приготовить</th><th>Какой продукт заканчивается</th></tr></thead>
+                <tbody>${running
+                  .map(
+                    (dish, index) => `<tr class="rise" ${UI.order(index)}>
+                      <td class="strong">${escapeHtml(dish.name)}</td>
+                      <td>${UI.badge('Доступно', STATUS.ok.color)}</td>
+                      <td class="nowrap"><span class="pips">${[0, 1, 2].map((pip) => `<i class="${pip < dish.availablePortions ? 'is-on' : ''}" style="--i:${pip}"></i>`).join('')}</span>ещё ${portionsLabel(dish.availablePortions)}</td>
+                      <td class="dim">${runningText(dish.limitedBy)}</td>
+                    </tr>`,
+                  )
+                  .join('')}</tbody>
+              </table></div>`
+            : ''
+
+          body.innerHTML = `<h2 class="panel-title rise" style="margin:8px 0 16px">В стопе</h2>${stoppedHtml}${runningHtml}`
+        }
+
+        body.innerHTML = UI.loading()
+        render(false)
+        UI.live(() => render(true))
+      })()
+    </script>
+  </body>
+</html>

@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: hackaton-backend
+    environment:
+      - SQLITE_DB_PATH=/root/data/app.db
+      - PORT=8080
+    volumes:
+      - db_data:/root/data
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: hackaton-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+volumes:
+  db_data:
+
+networks:
+  app-network:
+    driver: bridge

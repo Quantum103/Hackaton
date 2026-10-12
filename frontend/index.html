@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stoplist — склад ресторана</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg-primary: #09090b;
+    --bg-card: #131316;
+    --border-color: #1e1e24;
+    --border-light: #2a2a32;
+    --text-primary: #f0f0f0;
+    --text-secondary: #8a8a95;
+    --text-muted: #555560;
+    --accent-white: #ffffff;
+    --nav-height: 56px;
+    --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--font-main);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ===== NAV ===== */
+  .nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: var(--nav-height);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    z-index: 100;
+    background: rgba(9,9,11,0.9);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    transition: all 0.6s var(--ease);
+  }
+
+  .nav.faded {
+    background: rgba(9,9,11,0.3);
+    border-bottom-color: transparent;
+  }
+
+  .nav.faded .nav-logo,
+  .nav.faded .nav-links a,
+  .nav.faded .nav-dashboard-btn {
+    opacity: 0.4;
+  }
+
+  .nav-left { display: flex; align-items: center; gap: 28px; }
+
+  .nav-logo {
+    font-size: 18px; font-weight: 700; color: var(--accent-white);
+    letter-spacing: -0.5px; text-decoration: none;
+    transition: opacity 0.6s var(--ease);
+  }
+
+  .nav-links { display: flex; gap: 20px; list-style: none; }
+
+  .nav-links a {
+    color: var(--text-secondary); text-decoration: none;
+    font-size: 14px; font-weight: 400;
+    transition: color 0.3s var(--ease), opacity 0.6s var(--ease);
+    cursor: pointer;
+  }
+
+  .nav-links a:hover { color: var(--text-primary); }
+
+  .nav-dashboard-btn {
+    background: var(--accent-white); color: #000; border: none;
+    padding: 8px 18px; border-radius: 6px; font-size: 14px;
+    font-weight: 500; font-family: var(--font-main);
+    cursor: pointer; transition: all 0.3s var(--ease), opacity 0.6s var(--ease);
+  }
+
+  .nav-dashboard-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(255,255,255,0.1);
+  }
+
+  /* ===== MAIN LAYOUT ===== */
+  .main-layout {
+    display: flex;
+    min-height: 100vh;
+    padding-top: var(--nav-height);
+    position: relative;
+  }
+
+  /* ===== LEFT PANEL ===== */
+  .left-panel {
+    width: 60%;
+    min-width: 0;
+    flex-shrink: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 40px;
+    position: relative;
+    z-index: 2;
+    cursor: default;
+    transition: opacity 0.6s var(--ease);
+  }
+
+  /* При раскрытом дашборде — панель остаётся кликабельной, но контент скрыт */
+  .main-layout.dashboard-open .left-panel {
+    cursor: pointer;
+  }
+
+  /* Контент внутри левой панели скрывается при раскрытии */
+  .left-panel-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transition: opacity 0.5s var(--ease), transform 0.5s var(--ease);
+  }
+
+  .main-layout.dashboard-open .left-panel-content {
+    opacity: 0;
+    transform: scale(0.97);
+    pointer-events: none;
+  }
+
+  .hero-badge {
+    display: inline-block;
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 1.2px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    margin-bottom: 32px;
+    opacity: 0; transform: translateY(16px);
+    animation: fadeUp 0.7s var(--ease) 0.2s forwards;
+  }
+
+  .hero-title {
+    font-size: 64px; font-weight: 300;
+    line-height: 1.1; text-align: center;
+    letter-spacing: -2px; margin-bottom: 24px;
+  }
+
+  .hero-title span {
+    display: block;
+    opacity: 0; transform: translateY(24px);
+  }
+  .hero-title span:nth-child(1) { animation: fadeUp 0.8s var(--ease) 0.35s forwards; }
+  .hero-title span:nth-child(2) { animation: fadeUp 0.8s var(--ease) 0.5s forwards; }
+  .hero-title span:nth-child(3) { animation: fadeUp 0.8s var(--ease) 0.65s forwards; }
+
+  .hero-subtitle {
+    font-size: 16px; color: var(--text-secondary);
+    text-align: center; max-width: 440px;
+    line-height: 1.6; margin-bottom: 40px;
+    opacity: 0; transform: translateY(16px);
+    animation: fadeUp 0.7s var(--ease) 0.8s forwards;
+  }
+
+  .hero-buttons {
+    display: flex; gap: 12px;
+    opacity: 0; transform: translateY(16px);
+    animation: fadeUp 0.7s var(--ease) 0.95s forwards;
+  }
+
+  .btn-primary {
+    background: var(--accent-white); color: #000; border: none;
+    padding: 14px 28px; border-radius: 8px; font-size: 15px;
+    font-weight: 500; font-family: var(--font-main);
+    cursor: pointer; transition: all 0.3s var(--ease);
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(255,255,255,0.12);
+  }
+
+  .btn-secondary {
+    background: transparent; color: var(--text-primary);
+    border: 1px solid var(--border-light);
+    padding: 14px 28px; border-radius: 8px; font-size: 15px;
+    font-weight: 500; font-family: var(--font-main);
+    cursor: pointer; transition: all 0.3s var(--ease);
+  }
+
+  .btn-secondary:hover {
+    background: rgba(255,255,255,0.05);
+    transform: translateY(-2px);
+  }
+
+  /* Бегущая строка */
+  .marquee-wrapper {
+    position: absolute;
+    bottom: 40px;
+    left: 0; right: 0;
+    overflow: hidden;
+    mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+    opacity: 0;
+    animation: fadeIn 0.7s var(--ease) 1.2s forwards;
+  }
+
+  .marquee-track {
+    display: flex;
+    gap: 48px;
+    animation: marquee 25s linear infinite;
+    width: max-content;
+  }
+
+  .marquee-track span {
+    color: var(--text-muted);
+    font-size: 14px; font-weight: 500;
+    white-space: nowrap; flex-shrink: 0;
+  }
+
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+  @keyframes fadeIn { to { opacity: 1; } }
+
+  /* Подсказка "нажмите чтобы свернуть" */
+  .left-panel-hint {
+    position: absolute;
+    bottom: 50%;
+    left: 50%;
+    transform: translate(-50%, 50%);
+    font-size: 12px;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 0.4s var(--ease);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .main-layout.dashboard-open .left-panel-hint {
+    opacity: 1;
+  }
+
+  .left-panel-hint svg {
+    width: 14px; height: 14px;
+    animation: pulseArrow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulseArrow {
+    0%, 100% { opacity: 0.3; transform: translateX(0); }
+    50% { opacity: 1; transform: translateX(-3px); }
+  }
+
+  /* ===== RIGHT PANEL ===== */
+  .right-panel {
+    width: 40%;
+    min-width: 400px;
+    flex-shrink: 0;
+    background: linear-gradient(180deg, #c0c0c4 0%, #909095 15%, #555560 35%, #2a2a30 55%, #1a1a1e 75%, #0e0e12 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 32px;
+    position: relative;
+    cursor: pointer;
+    z-index: 1;
+    transition: width 0.8s var(--ease), min-width 0.8s var(--ease);
+    overflow: hidden;
+  }
+
+  .main-layout.dashboard-open .right-panel {
+    width: 100%;
+    min-width: 100%;
+  }
+
+  /* Компактные карточки */
+  .compact-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    max-width: 360px;
+    transition: opacity 0.4s var(--ease), transform 0.4s var(--ease);
+  }
+
+  .compact-cards.hidden {
+    opacity: 0;
+    transform: scale(0.9) translateY(-10px);
+    pointer-events: none;
+    position: absolute;
+  }
+
+  /* Полный дашборд */
+  .dashboard-wrapper {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.92);
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.7s var(--ease);
+    width: 90%;
+    max-width: 1100px;
+  }
+
+  .dashboard-wrapper.visible {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+  }
+
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    width: 100%;
+    background: rgba(15,15,18,0.6);
+    border-radius: 20px;
+    padding: 20px;
+    border: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .dash-card {
+    background: rgba(19,19,22,0.95);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 22px;
+    min-height: 200px;
+    opacity: 0;
+    transform: translateY(16px);
+    transition: all 0.5s var(--ease), border-color 0.3s, background 0.3s;
+  }
+
+  .dashboard-wrapper.visible .dash-card {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .dashboard-wrapper.visible .dash-card:nth-child(1) { transition-delay: 0.08s; }
+  .dashboard-wrapper.visible .dash-card:nth-child(2) { transition-delay: 0.14s; }
+  .dashboard-wrapper.visible .dash-card:nth-child(3) { transition-delay: 0.20s; }
+  .dashboard-wrapper.visible .dash-card:nth-child(4) { transition-delay: 0.26s; }
+  .dashboard-wrapper.visible .dash-card:nth-child(5) { transition-delay: 0.32s; }
+  .dashboard-wrapper.visible .dash-card:nth-child(6) { transition-delay: 0.38s; }
+
+  .dash-card:hover {
+    border-color: rgba(255,255,255,0.12);
+    background: rgba(26,26,31,0.98);
+  }
+
+  .dash-card-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 14px;
+  }
+
+  .dash-card-header .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text-muted); border: 1.5px solid var(--text-secondary);
+  }
+
+  .dash-card-header .dot.active {
+    background: var(--accent-white);
+    border-color: var(--accent-white);
+    box-shadow: 0 0 6px rgba(255,255,255,0.3);
+  }
+
+  .dash-card-title {
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .expiry-ratio { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+  .expiry-ratio .big { font-size: 32px; font-weight: 300; letter-spacing: -1px; }
+  .expiry-ratio .sep { font-size: 22px; color: var(--text-muted); font-weight: 300; }
+  .expiry-labels { display: flex; gap: 24px; margin-bottom: 18px; }
+  .expiry-labels span { font-size: 12px; color: var(--text-muted); }
+
+  .attention-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px; padding: 4px 10px;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--text-secondary); margin-bottom: 8px;
+  }
+
+  .attention-item { font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; }
+
+  .radio-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .radio-item {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.5px; text-transform: uppercase;
+    color: var(--text-muted); cursor: pointer; transition: color 0.2s;
+  }
+
+  .radio-item:hover { color: var(--text-secondary); }
+
+  .radio-item .radio-dot {
+    width: 13px; height: 13px; border-radius: 50%;
+    border: 2px solid var(--text-muted);
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .radio-item .radio-dot.filled { border-color: var(--accent-white); }
+  .radio-item .radio-dot.filled::after {
+    content: ''; width: 5px; height: 5px;
+    border-radius: 50%; background: var(--accent-white);
+  }
+
+  .radio-item.active { color: var(--text-primary); }
+
+  .comp-ratios { display: flex; gap: 32px; margin-bottom: 16px; }
+  .comp-ratio-item .comp-val { font-size: 28px; font-weight: 300; letter-spacing: -0.5px; }
+  .comp-ratio-item .comp-label { font-size: 12px; color: var(--text-muted); }
+
+  .comp-bar {
+    display: flex; height: 28px; border-radius: 5px;
+    overflow: hidden; margin-bottom: 12px;
+  }
+
+  .comp-bar-seg { height: 100%; transition: width 0.8s var(--ease); }
+  .comp-bar-seg.ok { background: #e0e0e0; }
+  .comp-bar-seg.soon { background: #888; }
+  .comp-bar-seg.expire { background: #444; }
+
+  .comp-total {
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .deadline-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+
+  .deadline-list-item {
+    font-size: 13px; color: var(--text-muted); transition: color 0.2s;
+  }
+
+  .deadline-list-item:hover { color: var(--text-secondary); }
+  .deadline-list-item::before { content: '— '; }
+
+  .sales-big { font-size: 28px; font-weight: 300; letter-spacing: -0.5px; margin-bottom: 14px; }
+  .sales-big .muted { color: var(--text-muted); }
+  .sales-chart { width: 100%; height: 70px; }
+  .sales-chart svg { width: 100%; height: 100%; }
+
+  .sales-chart path {
+    stroke-dasharray: 400; stroke-dashoffset: 400;
+    transition: stroke-dashoffset 1.5s var(--ease);
+  }
+
+  .dashboard-wrapper.visible .sales-chart path { stroke-dashoffset: 0; }
+
+  .stoplist-stats { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+  .stoplist-stat-row { display: flex; align-items: baseline; gap: 12px; }
+  .stoplist-stat-val { font-size: 26px; font-weight: 300; letter-spacing: -0.5px; }
+  .stoplist-stat-label { font-size: 12px; color: var(--text-muted); }
+  .stoplist-items { display: flex; flex-direction: column; gap: 5px; }
+  .stoplist-item-name { font-size: 13px; font-weight: 500; }
+  .stoplist-item-missing { font-size: 11px; color: var(--text-muted); }
+
+  .stoplist-header-row {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+  }
+
+  .stoplist-header-row .all-link {
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--text-muted); cursor: pointer; transition: color 0.2s;
+  }
+
+  .stoplist-header-row .all-link:hover { color: var(--text-secondary); }
+
+  .portions-header {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;
+  }
+
+  .portions-header .badge {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px; padding: 3px 8px;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+
+  .portions-chart {
+    display: flex; align-items: flex-end; gap: 16px;
+    height: 110px; padding-top: 10px;
+  }
+
+  .portion-bar-group {
+    display: flex; flex-direction: column;
+    align-items: center; gap: 6px; flex: 1;
+  }
+
+  .portion-bar-val { font-size: 13px; font-weight: 500; }
+
+  .portion-bar {
+    width: 100%; max-width: 44px; border-radius: 6px;
+    transition: height 0.8s var(--ease); height: 0;
+  }
+
+  .portion-bar.low { background: var(--accent-white); }
+  .portion-bar.mid {
+    background: repeating-linear-gradient(45deg, #555, #555 2px, #444 2px, #444 4px);
+  }
+  .portion-bar.high {
+    background: repeating-linear-gradient(45deg, #666, #666 2px, #555 2px, #555 4px);
+  }
+
+  .portion-bar-label {
+    font-size: 10px; color: var(--text-muted);
+    text-align: center; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; max-width: 55px;
+  }
+
+  /* Нижние тексты */
+  .right-bottom-text {
+    text-align: center; margin-top: 32px;
+    transition: opacity 0.4s var(--ease), transform 0.4s var(--ease);
+  }
+
+  .right-bottom-text.hidden {
+    opacity: 0; transform: translateY(10px);
+    pointer-events: none; position: absolute;
+  }
+
+  .right-bottom-text h3 {
+    font-size: 22px; font-weight: 400;
+    letter-spacing: -0.3px; margin-bottom: 8px;
+  }
+
+  .right-bottom-text p {
+    font-size: 13px; color: rgba(255,255,255,0.6); line-height: 1.5;
+  }
+
+  .dashboard-bottom-text {
+    text-align: center;
+    padding: 48px 20px 20px;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.6s var(--ease);
+    pointer-events: none;
+  }
+
+  .dashboard-bottom-text.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  .dashboard-bottom-text h2 {
+    font-size: 32px; font-weight: 300; letter-spacing: -0.5px;
+  }
+
+  /* Collapse button */
+  .collapse-btn {
+    position: fixed; bottom: 24px; left: 24px;
+    background: var(--bg-card); border: 1px solid var(--border-color);
+    color: var(--text-primary); padding: 10px 20px; border-radius: 8px;
+    font-size: 14px; font-family: var(--font-main);
+    cursor: pointer; z-index: 200;
+    opacity: 0; pointer-events: none;
+    transition: all 0.3s var(--ease);
+    backdrop-filter: blur(8px);
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .collapse-btn.visible {
+    opacity: 1; pointer-events: auto;
+  }
+
+  .collapse-btn:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-light);
+    transform: translateY(-2px);
+  }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg-primary); }
+  ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+
+  @media (max-width: 1024px) {
+    .right-panel { min-width: 350px; }
+    .hero-title { font-size: 48px; }
+    .dashboard-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (max-width: 768px) {
+    .main-layout { flex-direction: column; }
+    .left-panel { width: 100%; }
+    .right-panel { width: 100%; min-width: 100%; min-height: 50vh; }
+    .dashboard-grid { grid-template-columns: 1fr; }
+    .nav-links { display: none; }
+    .hero-title { font-size: 36px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav" id="mainNav">
+  <div class="nav-left">
+    <a class="nav-logo" href="index.html">Stoplist</a>
+    <ul class="nav-links">
+      <li><a href="warehouse.html">Склад</a></li>
+      <li><a>Поставки</a></li>
+      <li><a>Заказы</a></li>
+      <li><a>Стоп-лист</a></li>
+      <li><a>Горячее</a></li>
+      <li><a>Сроки</a></li>
+      <li><a>Аналитика</a></li>
+      <li><a>Демо</a></li>
+    </ul>
+  </div>
+  <button class="nav-dashboard-btn" onclick="expandDashboard()">Дашборд</button>
+</nav>
+
+<div class="main-layout" id="mainLayout">
+  <!-- ЛЕВАЯ ПАНЕЛЬ — кликабельна всегда -->
+  <div class="left-panel" id="leftPanel" onclick="handleLeftClick()">
+
+    <!-- Контент лендинга (скрывается при раскрытии) -->
+    <div class="left-panel-content" id="leftPanelContent">
+      <div class="hero-badge" id="hero-badge"></div>
+      <h1 class="hero-title">
+        <span>Ясность по</span>
+        <span>каждой партии</span>
+        <span>на складе</span>
+      </h1>
+      <p class="hero-subtitle" id="hero-subtitle"></p>
+      <div class="hero-buttons">
+        <button class="btn-primary" onclick="event.stopPropagation(); window.location.href='warehouse.html'">Открыть склад</button>
+        <button class="btn-secondary" onclick="event.stopPropagation(); expandDashboard()">Запустить демо</button>
+      </div>
+    </div>
+
+    <!-- Подсказка при раскрытом дашборде -->
+    <div class="left-panel-hint">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M19 12H5M12 19l-7-7 7-7"/>
+      </svg>
+      Нажмите чтобы вернуться
+    </div>
+
+    <!-- Бегущая строка (тоже скрывается) -->
+    <div class="marquee-wrapper" id="marqueeWrapper">
+      <div class="marquee-track" id="marqueeTrack"></div>
+    </div>
+  </div>
+
+  <!-- ПРАВАЯ ПАНЕЛЬ -->
+  <div class="right-panel" id="rightPanel" onclick="handleRightClick()">
+
+    <!-- Компактные карточки -->
+    <div class="compact-cards" id="compactCards">
+      <div class="dash-card" style="opacity:1;transform:none;min-height:auto;">
+        <div class="dash-card-header">
+          <div class="dot active"></div>
+          <div class="dash-card-title">Сроки годности</div>
+        </div>
+        <div class="expiry-ratio">
+          <span class="big" id="cOkPct"></span>
+          <span class="sep">/</span>
+          <span class="big" id="cRiskPct"></span>
+        </div>
+        <div class="expiry-labels"><span>в норме</span><span>под риском</span></div>
+        <div class="attention-badge">ТРЕБУЕТ ВНИМАНИЯ</div>
+        <div class="attention-item" id="cAttnItem"></div>
+        <div class="radio-list">
+          <div class="radio-item active"><div class="radio-dot filled"></div><span id="cHotLabel"></span></div>
+          <div class="radio-item"><div class="radio-dot"></div><span>Автосписание просрочки</span></div>
+          <div class="radio-item"><div class="radio-dot"></div><span>Прогноз стоп-листа</span></div>
+        </div>
+      </div>
+      <div class="dash-card" style="opacity:1;transform:none;min-height:auto;">
+        <div class="dash-card-title" style="margin-bottom:12px;">Доступно к продаже</div>
+        <div class="sales-big">
+          <span id="cSalesAvail"></span>
+          <span class="muted"> из <span id="cSalesTotal"></span> блюд</span>
+        </div>
+        <div class="sales-chart">
+          <svg viewBox="0 0 300 80" preserveAspectRatio="none">
+            <path d="M0,60 Q40,55 80,50 T160,40 T240,35 T300,30" fill="none" stroke="#888" stroke-width="1.5"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Полный дашборд -->
+    <div class="dashboard-wrapper" id="dashboardWrapper">
+      <div class="dashboard-grid" id="dashboardGrid">
+        <div class="dash-card">
+          <div class="dash-card-header">
+            <div class="dot active"></div>
+            <div class="dash-card-title">Сроки годности</div>
+          </div>
+          <div class="expiry-ratio">
+            <span class="big" id="dOkPct"></span>
+            <span class="sep">/</span>
+            <span class="big" id="dRiskPct"></span>
+          </div>
+          <div class="expiry-labels"><span>в норме</span><span>под риском</span></div>
+          <div class="attention-badge">ТРЕБУЕТ ВНИМАНИЯ</div>
+          <div class="attention-item" id="dAttnItem"></div>
+          <div class="radio-list">
+            <div class="radio-item active"><div class="radio-dot filled"></div><span id="dHotLabel"></span></div>
+            <div class="radio-item"><div class="radio-dot"></div><span>Автосписание просрочки</span></div>
+            <div class="radio-item"><div class="radio-dot"></div><span>Прогноз стоп-листа</span></div>
+          </div>
+        </div>
+
+        <div class="dash-card">
+          <div class="dash-card-title" style="margin-bottom:16px;">Состав склада</div>
+          <div class="comp-ratios">
+            <div class="comp-ratio-item"><div class="comp-val" id="compOk"></div><div class="comp-label">В норме</div></div>
+            <div class="comp-ratio-item"><div class="comp-val" id="compSoon"></div><div class="comp-label">Скоро истекает</div></div>
+            <div class="comp-ratio-item"><div class="comp-val" id="compExpire"></div><div class="comp-label">Истекает</div></div>
+          </div>
+          <div class="comp-bar">
+            <div class="comp-bar-seg ok" id="compBarOk"></div>
+            <div class="comp-bar-seg soon" id="compBarSoon"></div>
+            <div class="comp-bar-seg expire" id="compBarExpire"></div>
+          </div>
+          <div class="comp-total" id="compTotal"></div>
+        </div>
+
+        <div class="dash-card">
+          <div class="dash-card-title" style="margin-bottom:12px;">Ближайшие сроки</div>
+          <div class="attention-badge">ТРЕБУЕТ ВНИМАНИЯ</div>
+          <div class="attention-item" id="dDeadlineMain"></div>
+          <div class="deadline-list" id="dDeadlineList"></div>
+        </div>
+
+        <div class="dash-card">
+          <div class="dash-card-title" style="margin-bottom:12px;">Доступно к продаже</div>
+          <div class="sales-big">
+            <span id="dSalesAvail"></span>
+            <span class="muted"> из <span id="dSalesTotal"></span> блюд</span>
+          </div>
+          <div class="sales-chart">
+            <svg viewBox="0 0 300 80" preserveAspectRatio="none">
+              <path d="M0,60 Q40,55 80,50 T160,40 T240,35 T300,30" fill="none" stroke="#888" stroke-width="1.5"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="dash-card">
+          <div class="stoplist-header-row">
+            <div class="dash-card-title">Стоп-лист</div>
+            <div class="all-link">Весь список</div>
+          </div>
+          <div class="stoplist-stats">
+            <div class="stoplist-stat-row"><span class="stoplist-stat-val" id="sMenu"></span><span class="stoplist-stat-label">Блюд в меню</span></div>
+            <div class="stoplist-stat-row"><span class="stoplist-stat-val" id="sStopped"></span><span class="stoplist-stat-label">В стопе</span></div>
+            <div class="stoplist-stat-row"><span class="stoplist-stat-val" id="sHot"></span><span class="stoplist-stat-label">Горячих</span></div>
+          </div>
+          <div class="stoplist-items" id="sItems"></div>
+        </div>
+
+        <div class="dash-card">
+          <div class="portions-header">
+            <div class="dash-card-title">Меньше всего порций</div>
+            <div class="badge">Блюда</div>
+          </div>
+          <div class="portions-chart" id="portionsChart"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="right-bottom-text" id="rightBottomText">
+      <h3>Сроки под контролем в реальном времени</h3>
+      <p>От приёмки до списания —<br>отслеживается автоматически</p>
+    </div>
+
+    <div class="dashboard-bottom-text" id="dashboardBottomText">
+      <h2>Каждая партия, каждое блюдо — один ясный сигнал</h2>
+    </div>
+  </div>
+</div>
+
+<button class="collapse-btn" id="collapseBtn" onclick="collapseDashboard()">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M19 12H5M12 19l-7-7 7-7"/>
+  </svg>
+  Свернуть
+</button>
+
+<script>
+// ===== ДАННЫЕ ИЗ GO-СТРУКТУРЫ =====
+const serverData = {
+  totalProducts: 0,
+  totalBatches: 0,
+  heroSubtitle: "",
+  marqueeItems: ["Up_Sent", "Cheaf", "Up_Sent", "Cheaf", "Up_Sent"],
+  expiry: { okPercent: 0, riskPercent: 0, attentionItem: "", attentionHours: 0 },
+  composition: { okPercent: 0, soonPercent: 0, expirePercent: 0, totalProducts: 0 },
+  deadlines: [],
+  sales: { available: 0, total: 0 },
+  stoplist: { menuDishes: 0, stopped: 0, hot: 0, items: [] },
+  portions: [],
+  products: []
+};
+
+// ===== RENDER =====
+function renderHero() {
+  const badge = document.getElementById('hero-badge');
+  if (serverData.totalProducts > 0) {
+    badge.textContent = `${serverData.totalProducts} ПРОДУКТОВ · ${serverData.totalBatches} ПАРТИЙ ПОД КОНТРОЛЕМ`;
+  }
+
+  const subtitle = document.getElementById('hero-subtitle');
+  if (serverData.heroSubtitle) subtitle.textContent = serverData.heroSubtitle;
+
+  // Marquee
+  const track = document.getElementById('marqueeTrack');
+  track.innerHTML = '';
+  const items = serverData.marqueeItems.length > 0 ? serverData.marqueeItems : ["Up_Sent", "Cheaf", "Up_Sent", "Cheaf", "Up_Sent"];
+  for (let r = 0; r < 4; r++) {
+    items.forEach(item => {
+      const span = document.createElement('span');
+      span.textContent = item;
+      track.appendChild(span);
+    });
+  }
+
+  // Compact cards
+  setText('cOkPct', pct(serverData.expiry.okPercent));
+  setText('cRiskPct', pct(serverData.expiry.riskPercent));
+  setText('cAttnItem', serverData.expiry.attentionItem ? `${serverData.expiry.attentionItem}: через ${serverData.expiry.attentionHours} ч` : '');
+  setText('cSalesAvail', String(serverData.sales.available));
+  setText('cSalesTotal', String(serverData.sales.total));
+  setText('cHotLabel', serverData.stoplist.hot ? `${serverData.stoplist.hot} горячих предложений` : '');
+
+  // Dashboard cards
+  setText('dOkPct', pct(serverData.expiry.okPercent));
+  setText('dRiskPct', pct(serverData.expiry.riskPercent));
+  setText('dAttnItem', serverData.expiry.attentionItem ? `${serverData.expiry.attentionItem} — через ${serverData.expiry.attentionHours} ч` : '');
+  setText('dHotLabel', serverData.stoplist.hot ? `${serverData.stoplist.hot} горячих предложений` : '');
+  setText('dDeadlineMain', serverData.expiry.attentionItem ? `${serverData.expiry.attentionItem} — через ${serverData.expiry.attentionHours} ч` : '');
+  setText('dSalesAvail', String(serverData.sales.available));
+  setText('dSalesTotal', String(serverData.sales.total));
+
+  setText('compOk', pct(serverData.composition.okPercent));
+  setText('compSoon', pct(serverData.composition.soonPercent));
+  setText('compExpire', pct(serverData.composition.expirePercent));
+  setWidth('compBarOk', serverData.composition.okPercent);
+  setWidth('compBarSoon', serverData.composition.soonPercent);
+  setWidth('compBarExpire', serverData.composition.expirePercent);
+  setText('compTotal', serverData.composition.totalProducts ? `ПРОДУКТОВ НА СКЛАДЕ: ${serverData.composition.totalProducts}` : '');
+
+  const dlList = document.getElementById('dDeadlineList');
+  dlList.innerHTML = '';
+  serverData.deadlines.forEach(d => {
+    const div = document.createElement('div');
+    div.className = 'deadline-list-item';
+    div.textContent = d.name + (d.percent ? ` ${d.percent}%` : '') + ': через ' + d.hours + ' ч';
+    dlList.appendChild(div);
+  });
+
+  setText('sMenu', String(serverData.stoplist.menuDishes));
+  setText('sStopped', String(serverData.stoplist.stopped));
+  setText('sHot', String(serverData.stoplist.hot));
+
+  const sItems = document.getElementById('sItems');
+  sItems.innerHTML = '';
+  serverData.stoplist.items.forEach(item => {
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'stoplist-item-name';
+    nameDiv.textContent = item.name;
+    sItems.appendChild(nameDiv);
+    const missDiv = document.createElement('div');
+    missDiv.className = 'stoplist-item-missing';
+    missDiv.textContent = 'нет: ' + item.missing;
+    sItems.appendChild(missDiv);
+  });
+
+  const portionsChart = document.getElementById('portionsChart');
+  portionsChart.innerHTML = '';
+  if (serverData.portions.length > 0) {
+    const maxPortion = Math.max(...serverData.portions.map(p => p.value));
+    serverData.portions.forEach((p, i) => {
+      const group = document.createElement('div');
+      group.className = 'portion-bar-group';
+
+      const val = document.createElement('div');
+      val.className = 'portion-bar-val';
+      val.textContent = p.value;
+
+      const bar = document.createElement('div');
+      bar.className = 'portion-bar';
+      const heightPct = (p.value / maxPortion) * 100;
+      bar.style.height = '0%';
+      bar.dataset.targetHeight = Math.max(heightPct, 10) + '%';
+
+      if (i === 0) bar.classList.add('low');
+      else if (i <= Math.floor(serverData.portions.length / 2)) bar.classList.add('mid');
+      else bar.classList.add('high');
+
+      const label = document.createElement('div');
+      label.className = 'portion-bar-label';
+      label.textContent = p.name;
+
+      group.appendChild(val);
+      group.appendChild(bar);
+      group.appendChild(label);
+      portionsChart.appendChild(group);
+    });
+  }
+}
+
+function pct(v) { return v ? v + '%' : ''; }
+function setText(id, text) { const el = document.getElementById(id); if (el) el.textContent = text; }
+function setWidth(id, v) { const el = document.getElementById(id); if (el) el.style.width = v + '%'; }
+
+// ===== EXPAND / COLLAPSE =====
+let dashboardExpanded = false;
+let animating = false;
+
+function expandDashboard() {
+  if (dashboardExpanded || animating) return;
+  animating = true;
+  dashboardExpanded = true;
+
+  const layout = document.getElementById('mainLayout');
+  const nav = document.getElementById('mainNav');
+  const compactCards = document.getElementById('compactCards');
+  const dashboardWrapper = document.getElementById('dashboardWrapper');
+  const bottomText = document.getElementById('dashboardBottomText');
+  const rightBottom = document.getElementById('rightBottomText');
+  const collapseBtn = document.getElementById('collapseBtn');
+  const marqueeWrapper = document.getElementById('marqueeWrapper');
+
+  nav.classList.add('faded');
+  layout.classList.add('dashboard-open');
+
+  setTimeout(() => {
+    compactCards.classList.add('hidden');
+    rightBottom.classList.add('hidden');
+    marqueeWrapper.style.opacity = '0';
+  }, 100);
+
+  setTimeout(() => {
+    dashboardWrapper.classList.add('visible');
+    bottomText.classList.add('visible');
+    collapseBtn.classList.add('visible');
+
+    setTimeout(() => {
+      document.querySelectorAll('.portion-bar').forEach(bar => {
+        if (bar.dataset.targetHeight) bar.style.height = bar.dataset.targetHeight;
+      });
+    }, 200);
+
+    animating = false;
+  }, 400);
+}
+
+function collapseDashboard() {
+  if (!dashboardExpanded || animating) return;
+  animating = true;
+  dashboardExpanded = false;
+
+  const layout = document.getElementById('mainLayout');
+  const nav = document.getElementById('mainNav');
+  const compactCards = document.getElementById('compactCards');
+  const dashboardWrapper = document.getElementById('dashboardWrapper');
+  const bottomText = document.getElementById('dashboardBottomText');
+  const rightBottom = document.getElementById('rightBottomText');
+  const collapseBtn = document.getElementById('collapseBtn');
+  const marqueeWrapper = document.getElementById('marqueeWrapper');
+
+  dashboardWrapper.classList.remove('visible');
+  bottomText.classList.remove('visible');
+  collapseBtn.classList.remove('visible');
+
+  document.querySelectorAll('.portion-bar').forEach(bar => {
+    bar.style.height = '0%';
+  });
+
+  nav.classList.remove('faded');
+  layout.classList.remove('dashboard-open');
+
+  setTimeout(() => {
+    compactCards.classList.remove('hidden');
+    rightBottom.classList.remove('hidden');
+    marqueeWrapper.style.opacity = '';
+    animating = false;
+  }, 500);
+}
+
+function handleLeftClick() {
+  // Если дашборд раскрыт — сворачиваем (возврат на лендинг)
+  if (dashboardExpanded) {
+    collapseDashboard();
+  }
+}
+
+function handleRightClick() {
+  // Если дашборд не раскрыт — раскрываем
+  if (!dashboardExpanded) {
+    expandDashboard();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', renderHero);
+</script>
+
+</body>
+</html>

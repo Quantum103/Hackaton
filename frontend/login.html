@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stoplist — Вход</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg-primary: #09090b;
+    --bg-card: #131316;
+    --bg-card-hover: #1a1a1f;
+    --border-color: #1e1e24;
+    --border-light: #2a2a32;
+    --text-primary: #f0f0f0;
+    --text-secondary: #8a8a95;
+    --text-muted: #555560;
+    --accent-white: #ffffff;
+    --accent-glow: rgba(255,255,255,0.08);
+    --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--font-main);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ===== ANIMATED BACKGROUND ===== */
+  .bg-scene {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0;
+    overflow: hidden;
+  }
+
+  /* Сетка */
+  .bg-grid {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+    background-size: 60px 60px;
+    animation: gridPulse 4s ease-in-out infinite;
+  }
+
+  @keyframes gridPulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+
+  /* Градиентные блобы */
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.15;
+    animation: blobFloat 20s ease-in-out infinite;
+  }
+
+  .blob-1 {
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, #4a4a6a, transparent 70%);
+    top: -100px; left: -100px;
+    animation-delay: 0s;
+    animation-duration: 25s;
+  }
+
+  .blob-2 {
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, #3a3a5a, transparent 70%);
+    bottom: -100px; right: -100px;
+    animation-delay: -5s;
+    animation-duration: 22s;
+  }
+
+  .blob-3 {
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, #5a5a7a, transparent 70%);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    animation-delay: -10s;
+    animation-duration: 28s;
+  }
+
+  @keyframes blobFloat {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    25% { transform: translate(30px, -40px) scale(1.1); }
+    50% { transform: translate(-20px, 20px) scale(0.95); }
+    75% { transform: translate(40px, 30px) scale(1.05); }
+  }
+
+  /* Плавающие частицы */
+  .particles {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+
+  .particle {
+    position: absolute;
+    width: 2px; height: 2px;
+    background: rgba(255,255,255,0.3);
+    border-radius: 50%;
+    animation: particleFloat linear infinite;
+  }
+
+  @keyframes particleFloat {
+    0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(-100px) rotate(720deg); opacity: 0; }
+  }
+
+  /* ===== LOGIN CONTAINER ===== */
+  .login-container {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+
+  .login-card {
+    width: 100%;
+    max-width: 420px;
+    background: rgba(19,19,22,0.7);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 20px;
+    padding: 48px 40px;
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+    animation: cardAppear 0.8s var(--ease) 0.3s forwards;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .login-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    animation: shimmer 3s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0% { left: -100%; }
+    50%, 100% { left: 100%; }
+  }
+
+  @keyframes cardAppear {
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* Логотип */
+  .login-logo {
+    text-align: center;
+    margin-bottom: 40px;
+    opacity: 0;
+    animation: fadeUp 0.6s var(--ease) 0.5s forwards;
+  }
+
+  .login-logo-text {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+    position: relative;
+    display: inline-block;
+  }
+
+  .login-logo-text::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 2px;
+    background: var(--accent-white);
+    animation: logoLine 0.6s var(--ease) 1s forwards;
+  }
+
+  @keyframes logoLine {
+    to { width: 40px; }
+  }
+
+  .login-logo-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Форма */
+  .login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .form-group {
+    position: relative;
+    opacity: 0;
+    transform: translateY(16px);
+    animation: fadeUp 0.5s var(--ease) forwards;
+  }
+
+  .form-group:nth-child(1) { animation-delay: 0.7s; }
+  .form-group:nth-child(2) { animation-delay: 0.85s; }
+
+  .form-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    transition: color 0.3s var(--ease);
+  }
+
+  .form-group:focus-within .form-label {
+    color: var(--text-secondary);
+  }
+
+  .form-input {
+    width: 100%;
+    padding: 14px 16px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-family: var(--font-main);
+    transition: all 0.3s var(--ease);
+    outline: none;
+  }
+
+  .form-input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .form-input:focus {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.15);
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.03);
+  }
+
+  /* Иконка в поле */
+  .input-icon {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    transition: color 0.3s var(--ease);
+    pointer-events: none;
+  }
+
+  .form-group:focus-within .input-icon {
+    color: var(--text-secondary);
+  }
+
+  .form-input {
+    padding-right: 44px;
+  }
+
+  /* Кнопка */
+  .login-btn {
+    width: 100%;
+    padding: 16px;
+    background: var(--accent-white);
+    color: #000;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: var(--font-main);
+    cursor: pointer;
+    transition: all 0.3s var(--ease);
+    position: relative;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(16px);
+    animation: fadeUp 0.5s var(--ease) 1s forwards;
+  }
+
+  .login-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 0; height: 0;
+    background: rgba(0,0,0,0.1);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.6s var(--ease), height 0.6s var(--ease);
+  }
+
+  .login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(255,255,255,0.15);
+  }
+
+  .login-btn:hover::before {
+    width: 300px;
+    height: 300px;
+  }
+
+  .login-btn:active {
+    transform: translateY(0);
+  }
+
+  .login-btn-text {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .login-btn-text svg {
+    transition: transform 0.3s var(--ease);
+  }
+
+  .login-btn:hover .login-btn-text svg {
+    transform: translateX(4px);
+  }
+
+  /* Разделитель */
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 8px 0;
+    opacity: 0;
+    animation: fadeIn 0.5s var(--ease) 1.15s forwards;
+  }
+
+  .divider::before,
+  .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-color);
+  }
+
+  .divider span {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+
+  @keyframes fadeIn {
+    to { opacity: 1; }
+  }
+
+  /* Подсказка */
+  .login-hint {
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+    opacity: 0;
+    animation: fadeUp 0.5s var(--ease) 1.3s forwards;
+  }
+
+  .login-hint a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    transition: color 0.3s;
+  }
+
+  .login-hint a:hover {
+    color: var(--text-primary);
+  }
+
+  /* Декоративные элементы */
+  .corner-decor {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    opacity: 0;
+    animation: cornerAppear 0.6s var(--ease) 1.5s forwards;
+  }
+
+  .corner-decor.top-left {
+    top: 16px; left: 16px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    border-left: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .corner-decor.top-right {
+    top: 16px; right: 16px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    border-right: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .corner-decor.bottom-left {
+    bottom: 16px; left: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    border-left: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .corner-decor.bottom-right {
+    bottom: 16px; right: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    border-right: 1px solid rgba(255,255,255,0.1);
+  }
+
+  @keyframes cornerAppear {
+    to { opacity: 1; }
+  }
+
+  /* Пульсирующая точка */
+  .status-indicator {
+    position: absolute;
+    top: 24px;
+    right: 24px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+    opacity: 0;
+    animation: fadeUp 0.5s var(--ease) 1.6s forwards;
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--stock-full);
+    animation: statusPulse 2s ease-in-out infinite;
+  }
+
+  @keyframes statusPulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52,211,153,0.4); }
+    50% { opacity: 0.7; box-shadow: 0 0 0 6px rgba(52,211,153,0); }
+  }
+
+  /* Loading state */
+  .login-btn.loading .login-btn-text {
+    opacity: 0;
+  }
+
+  .login-btn.loading::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 20px; height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid rgba(0,0,0,0.1);
+    border-top-color: #000;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Error state */
+  .form-input.error {
+    border-color: var(--stock-low);
+    box-shadow: 0 0 0 3px rgba(248,113,113,0.1);
+  }
+
+  .error-message {
+    font-size: 12px;
+    color: var(--stock-low);
+    margin-top: 6px;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: all 0.3s var(--ease);
+  }
+
+  .error-message.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @media (max-width: 480px) {
+    .login-card { padding: 36px 24px; }
+    .login-logo-text { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Анимированный фон -->
+<div class="bg-scene">
+  <div class="bg-grid"></div>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+  <div class="particles" id="particles"></div>
+</div>
+
+<!-- Форма входа -->
+<div class="login-container">
+  <div class="login-card">
+    <!-- Угловые декорации -->
+    <div class="corner-decor top-left"></div>
+    <div class="corner-decor top-right"></div>
+    <div class="corner-decor bottom-left"></div>
+    <div class="corner-decor bottom-right"></div>
+
+    <!-- Индикатор статуса -->
+    <div class="status-indicator">
+      <div class="status-dot"></div>
+      <span>Online</span>
+    </div>
+
+    <!-- Логотип -->
+    <div class="login-logo">
+      <div class="login-logo-text">Stoplist</div>
+      <div class="login-logo-sub">Склад ресторана</div>
+    </div>
+
+    <!-- Форма -->
+    <form class="login-form" id="loginForm" onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label class="form-label" for="username">Логин</label>
+        <input
+          type="text"
+          id="username"
+          class="form-input"
+          placeholder="Введите логин"
+          autocomplete="username"
+          required
+        >
+        <div class="input-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+        </div>
+        <div class="error-message" id="usernameError">Введите логин</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Пароль</label>
+        <input
+          type="password"
+          id="password"
+          class="form-input"
+          placeholder="Введите пароль"
+          autocomplete="current-password"
+          required
+        >
+        <div class="input-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+        <div class="error-message" id="passwordError">Введите пароль</div>
+      </div>
+
+      <button type="submit" class="login-btn" id="loginBtn">
+        <span class="login-btn-text">
+          Войти
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </span>
+      </button>
+    </form>
+
+    <div class="divider">
+      <span>Secure access</span>
+    </div>
+
+    <div class="login-hint">
+      Доступ только для авторизованных пользователей
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== СОЗДАНИЕ ЧАСТИЦ =====
+function createParticles() {
+  const container = document.getElementById('particles');
+  const count = 30;
+
+  for (let i = 0; i < count; i++) {
+    const particle = document.createElement('div');
+    particle.className = 'particle';
+
+    const x = Math.random() * 100;
+    const duration = 15 + Math.random() * 20;
+    const delay = Math.random() * 20;
+    const size = 1 + Math.random() * 2;
+
+    particle.style.left = x + '%';
+    particle.style.width = size + 'px';
+    particle.style.height = size + 'px';
+    particle.style.animationDuration = duration + 's';
+    particle.style.animationDelay = '-' + delay + 's';
+
+    container.appendChild(particle);
+  }
+}
+
+// ===== ОБРАБОТКА ВХОДА =====
+function handleLogin(e) {
+  e.preventDefault();
+
+  const username = document.getElementById('username');
+  const password = document.getElementById('password');
+  const btn = document.getElementById('loginBtn');
+
+  // Сброс ошибок
+  username.classList.remove('error');
+  password.classList.remove('error');
+  document.getElementById('usernameError').classList.remove('visible');
+  document.getElementById('passwordError').classList.remove('visible');
+
+  let hasError = false;
+
+  if (!username.value.trim()) {
+    username.classList.add('error');
+    document.getElementById('usernameError').classList.add('visible');
+    hasError = true;
+  }
+
+  if (!password.value.trim()) {
+    password.classList.add('error');
+    document.getElementById('passwordError').classList.add('visible');
+    hasError = true;
+  }
+
+  if (hasError) return;
+
+  // Loading state
+  btn.classList.add('loading');
+  btn.disabled = true;
+
+  // Здесь будет запрос к бэкенду
+  // fetch('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) })
+
+  setTimeout(() => {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    // window.location.href = 'index.html';
+  }, 2000);
+}
+
+// ===== ИНИЦИАЛИЗАЦИЯ =====
+document.addEventListener('DOMContentLoaded', () => {
+  createParticles();
+
+  // Автофокус на поле логина
+  setTimeout(() => {
+    document.getElementById('username').focus();
+  }, 1200);
+});
+
+  // Функция, которая вызывается при сабмите формы
+  async function handleLogin(event) {
+    event.preventDefault(); // Отменяем стандартную перезагрузку страницы
+
+    const usernameInput = document.getElementById('username');
+    const passwordInput = document.getElementById('password');
+    const loginBtn = document.getElementById('loginBtn');
+    
+    // Сбрасываем старые ошибки
+    document.getElementById('usernameError').style.display = 'none';
+    document.getElementById('passwordError').style.display = 'none';
+
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value.trim();
+
+    // Базовая валидация
+    if (!username) {
+      document.getElementById('usernameError').style.display = 'block';
+      return;
+    }
+    if (!password) {
+      document.getElementById('passwordError').style.display = 'block';
+      return;
+    }
+
+    // Блокируем кнопку на время запроса
+    loginBtn.disabled = true;
+    loginBtn.querySelector('.login-btn-text').textContent = 'Вход...';
+
+    try {
+      // ВАЖНО: так как будет Nginx, мы стучимся на относительный путь /api/...
+      // Nginx сам перенаправит это на Go-контейнер
+      const response = await fetch('/api/user/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          login: username, // Маппим username из HTML в login для Go
+          password: password
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Ошибка входа');
+      }
+
+      // Успех! Сохраняем токен и роль
+      localStorage.setItem('jwt_token', data.token);
+      localStorage.setItem('user_role', data.role);
+      localStorage.setItem('user_name', data.name);
+
+      alert(`Добро пожаловать, ${data.name}!`);
+      // window.location.href = '/dashboard.html'; // Редирект на главную
+
+    } catch (error) {
+      alert('Ошибка: ' + error.message);
+    } finally {
+      // Возвращаем кнопку в исходное состояние
+      loginBtn.disabled = false;
+      loginBtn.querySelector('.login-btn-text').innerHTML = 'Войти <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+    }
+  }
+
+</script>
+
+</body>
+</html>

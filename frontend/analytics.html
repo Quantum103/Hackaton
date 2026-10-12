@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Аналитика — Stoplist</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      /* Сцена страницы: бегущий график с точкой и «эквалайзер» из столбцов */
+      .chart { position: absolute; inset: 0; }
+      .chart svg { position: absolute; left: 0; right: 0; top: 6%; width: 100%; height: 64%; overflow: visible; }
+      .chart .line { fill: none; stroke: rgba(255, 255, 255, 0.9); stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 620; stroke-dashoffset: 620; animation: lineDraw 6s linear infinite; }
+      .chart .ghost { fill: none; stroke: rgba(255, 255, 255, 0.2); stroke-width: 1; stroke-dasharray: 3 6; }
+      .chart .area { fill: url(#fade); opacity: 0; animation: areaIn 6s ease-in-out infinite; }
+      @keyframes lineDraw { 0% { stroke-dashoffset: 620; } 55%, 85% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -620; } }
+      @keyframes areaIn { 0%, 30% { opacity: 0; } 60%, 85% { opacity: 1; } 100% { opacity: 0; } }
+      .chart .dot { fill: #fff; filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.9)); }
+      .eq { position: absolute; left: 0; right: 0; bottom: 0; height: 26%; display: flex; align-items: flex-end; gap: 5px; }
+      .eq i { flex: 1; height: 100%; min-width: 3px; border-radius: 2px 2px 0 0; background: rgba(255, 255, 255, 0.34); transform-origin: bottom; animation: eq var(--t, 1.6s) ease-in-out infinite alternate; animation-delay: var(--d, 0s); }
+      .eq i:nth-child(4n) { background: #fff; }
+      @keyframes eq { from { transform: scaleY(0.18); } to { transform: scaleY(1); } }
+
+      /* Прогноз стоп-листа: шкала времени, по которой плывёт отметка «сейчас» */
+      .timeline { padding: 22px 24px 18px; display: grid; gap: 14px; }
+      .t-axis { display: grid; grid-template-columns: 210px minmax(0, 1fr) 150px; gap: 16px; font-size: 11px; color: var(--ink-faint); }
+      .t-ticks { display: flex; justify-content: space-between; }
+      .t-row { display: grid; grid-template-columns: 210px minmax(0, 1fr) 150px; gap: 16px; align-items: center; font-size: 13.5px; }
+      .t-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+      .t-track { position: relative; height: 10px; border-radius: 5px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+      .t-fill { height: 100%; border-radius: 5px; background: linear-gradient(to right, rgba(255, 255, 255, 0.35), var(--c, #fff)); }
+      /* По полосе пробегает блик — «время идёт» */
+      .t-track::after {
+        content: ""; position: absolute; top: 0; bottom: 0; width: 60px; left: -60px;
+        background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.5), transparent);
+        animation: glint 3.4s linear infinite; animation-delay: var(--d, 0s);
+      }
+      @keyframes glint { to { left: 100%; } }
+      .t-when { text-align: right; white-space: nowrap; }
+      .t-cause { grid-column: 2 / -1; margin-top: -8px; font-size: 12px; color: var(--ink-soft); }
+
+      .bar-line .score-track { height: 6px; }
+      .ring { width: 54px; height: 54px; flex: 0 0 auto; }
+      .ring circle { fill: none; stroke-width: 5; }
+      .ring .back { stroke: rgba(255, 255, 255, 0.1); }
+      .ring .front { stroke: #fff; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset 1s cubic-bezier(0.16, 1, 0.3, 1); }
+      .kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+      .kpi { padding: 22px; display: flex; align-items: center; gap: 18px; }
+      .kpi .big { font-size: clamp(26px, 2.8vw, 38px); font-variant-numeric: tabular-nums; }
+
+      @media (max-width: 900px) {
+        .t-axis { display: none; }
+        .t-row { grid-template-columns: minmax(0, 1fr) auto; }
+        .t-track { grid-column: 1 / -1; order: 3; }
+        .t-cause { grid-column: 1 / -1; margin-top: 0; order: 4; }
+        .kpis { grid-template-columns: minmax(0, 1fr); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app" id="app">
+      <main class="page" id="page">
+        <section class="hero-band rise">
+          <div class="panel-bg"><i></i><i></i><span class="grain"></span></div>
+          <div class="hero-text">
+            <div>
+              <span class="label home-badge">Отчёты</span>
+              <h1 class="page-title">Аналитика</h1>
+              <p class="page-sub">Прогноз стоп-листа, что пора заказать, списания и самые дефицитные продукты.</p>
+            </div>
+            <div class="hero-stats">
+              <div><div class="big" id="statAccepted">0</div><div class="small">заказов оформлено</div></div>
+              <div><div class="big" id="statRejected">0</div><div class="small">отклонено</div></div>
+              <div><div class="big" id="statWritten">0</div><div class="small">партий списано по сроку</div></div>
+            </div>
+          </div>
+          <div class="scene" aria-hidden="true">
+            <div class="chart">
+              <svg viewBox="0 0 360 110">
+                <defs><linearGradient id="fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.22" /><stop offset="1" stop-color="#fff" stop-opacity="0" /></linearGradient></defs>
+                <path class="ghost" d="M0 70 C 50 64, 90 78, 140 60 S 230 66, 280 44 S 330 50, 360 38" />
+                <path class="area" d="M0 96 C 40 80, 60 50, 96 58 S 150 90, 186 60 S 232 14, 268 30 S 320 26, 360 6 L360 110 L0 110 Z" />
+                <path class="line" d="M0 96 C 40 80, 60 50, 96 58 S 150 90, 186 60 S 232 14, 268 30 S 320 26, 360 6" />
+                <!-- Точка идёт по той же кривой и в том же ритме, что прорисовка линии -->
+                <circle class="dot" r="4.5">
+                  <animateMotion dur="6s" repeatCount="indefinite" calcMode="linear" keyPoints="0;1;1;1" keyTimes="0;0.55;0.85;1" path="M0 96 C 40 80, 60 50, 96 58 S 150 90, 186 60 S 232 14, 268 30 S 320 26, 360 6" />
+                  <animate attributeName="opacity" dur="6s" repeatCount="indefinite" values="0;1;1;0;0" keyTimes="0;0.06;0.85;0.95;1" />
+                </circle>
+              </svg>
+              <div class="eq" id="eq"></div>
+            </div>
+          </div>
+        </section>
+
+        <div id="analyticsBody"></div>
+      </main>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="mock-api.js"></script>
+    <script src="shared.js"></script>
+    <script>
+      ;(() => {
+        if (!UI.shell('analytics')) return
+        const { escapeHtml, formatQuantity, formatDateTime, formatHours, STATUS } = UI
+
+        const page = document.getElementById('page')
+        const body = document.getElementById('analyticsBody')
+
+        // Столбики «эквалайзера» в шапке: у каждого свой ритм.
+        document.getElementById('eq').innerHTML = Array.from({ length: 28 }, (_, index) => `<i style="--t:${1.1 + ((index * 7) % 9) / 6}s; --d:${-((index * 5) % 11) / 5}s"></i>`).join('')
+
+        const section = (title, content, index) => `<h2 class="panel-title rise" style="margin:36px 0 16px; --i:${index}">${title}</h2>${content}`
+        const bar = (share, index) => `<div class="score-track"><i class="grow" style="width:${Math.max(3, Math.round(share * 100))}%; --i:${index}"></i></div>`
+
+        // Кольцо-индикатор: доля от целого.
+        function ring(share) {
+          const length = 2 * Math.PI * 22
+          return `<svg class="ring" viewBox="0 0 54 54" aria-hidden="true"><circle class="back" cx="27" cy="27" r="22" /><circle class="front" cx="27" cy="27" r="22" stroke-dasharray="${length}" stroke-dashoffset="${length}" data-offset="${length * (1 - Math.min(1, Math.max(0, share)))}" /></svg>`
+        }
+
+        const HORIZON_HOURS = 72 // шкала прогноза — трое суток
+
+        async function render(silent) {
+          let data
+          try {
+            data = await UI.call(API.get('/analytics'))
+          } catch (error) {
+            body.innerHTML = UI.emptyState('Не удалось загрузить аналитику', escapeHtml(error.message))
+            return
+          }
+          page.classList.toggle('no-anim', Boolean(silent))
+
+          UI.countUp(document.getElementById('statAccepted'), data.orders.accepted)
+          UI.countUp(document.getElementById('statRejected'), data.orders.rejected)
+          UI.countUp(document.getElementById('statWritten'), data.writeoffEvents)
+
+          const totalOrders = data.orders.accepted + data.orders.rejected
+          const stoppedNow = data.forecast.filter((item) => item.stopped).length
+          const soonStopped = data.forecast.filter((item) => !item.stopped && item.hours < 12).length
+          const maxRejections = Math.max(1, ...data.deficits.map((item) => item.rejections))
+
+          const kpis = `<div class="kpis">
+            <div class="glass kpi rise" style="--i:1">${ring(totalOrders ? data.orders.accepted / totalOrders : 0)}<div><div class="big">${totalOrders ? Math.round((data.orders.accepted / totalOrders) * 100) : 0}%</div><div class="small">заказов прошло без отказа</div></div></div>
+            <div class="glass kpi rise" style="--i:2">${ring(data.forecast.length ? stoppedNow / data.forecast.length : 0)}<div><div class="big">${stoppedNow} из ${data.forecast.length}</div><div class="small">блюд сейчас в стопе</div></div></div>
+            <div class="glass kpi rise" style="--i:3">${ring(data.forecast.length ? soonStopped / data.forecast.length : 0)}<div><div class="big">${soonStopped}</div><div class="small">уйдут в стоп за 12 часов</div></div></div>
+          </div>`
+
+          const forecast = data.forecast.length
+            ? `<div class="glass timeline rise" style="--i:4">
+                <div class="t-axis"><span>Блюдо</span><div class="t-ticks"><span>сейчас</span><span>сутки</span><span>двое</span><span>трое</span></div><span></span></div>
+                ${data.forecast
+                  .map((item, index) => {
+                    const share = item.stopped ? 0 : Math.min(1, item.hours / HORIZON_HOURS)
+                    const color = item.stopped || item.hours < 6 ? STATUS.expired.color : item.hours < 24 ? STATUS.warning.color : STATUS.ok.color
+                    const when = item.stopped ? '<span class="danger">уже в стопе</span>' : `через ${formatHours(item.hours)}`
+                    const cause = item.cause === 'consumption' ? 'закончится при текущих продажах' : item.cause === 'expiry' ? 'истечёт срок годности' : 'нет на складе'
+                    return `<div class="t-row rise" ${UI.order(index + 4)}>
+                      <span class="t-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span>
+                      <div class="t-track" style="--d:${-index * 0.6}s"><div class="t-fill grow" style="width:${Math.max(2, share * 100)}%; --c:${color}; --i:${index}"></div></div>
+                      <span class="t-when">${when}</span>
+                      <span class="t-cause">${escapeHtml(item.productName)} — ${cause}${item.stopped ? '' : ' · ' + formatDateTime(item.at)}</span>
+                    </div>`
+                  })
+                  .join('')}
+              </div>`
+            : UI.emptyState('', 'Прогноз появится, когда в меню будут блюда.')
+
+          const purchases = data.purchases.length
+            ? `<div class="glass table-wrap rise"><table class="table">
+                <thead><tr><th>Продукт</th><th class="num">Остаток</th><th>Хватит на</th><th class="num">Расход в день</th><th class="num">Стоит заказать</th><th></th></tr></thead>
+                <tbody>${data.purchases
+                  .map(
+                    (item, index) => `<tr class="rise" ${UI.order(index)}>
+                      <td class="strong">${escapeHtml(item.name)}</td>
+                      <td class="num nowrap">${item.usable > 0 ? formatQuantity(item.usable, item.unit) : '<span class="danger">нет</span>'}</td>
+                      <td class="nowrap">${item.basis === 'rate' ? formatHours(item.hoursLeft) : '<span class="dim">меньше 5 порций</span>'}</td>
+                      <td class="num nowrap dim">${item.basis === 'rate' ? formatQuantity(Math.round(item.perDay), item.unit) : 'нет данных'}</td>
+                      <td class="num nowrap strong">${formatQuantity(item.quantity, item.unit)}</td>
+                      <td class="num"><a class="btn btn-sm btn-line" href="supplies.html" data-admin>Оформить поставку</a></td>
+                    </tr>`,
+                  )
+                  .join('')}</tbody>
+              </table></div>`
+            : UI.emptyState('', 'Заказывать пока ничего не нужно: запасов хватает больше чем на двое суток.')
+
+          const writeoffs = data.writeoffs.length
+            ? `<div class="glass table-wrap rise"><table class="table">
+                <thead><tr><th>Продукт</th><th class="num">Списано</th><th class="num">Поступило</th><th>Доля списанного</th></tr></thead>
+                <tbody>${data.writeoffs
+                  .map((item, index) => `<tr class="rise" ${UI.order(index)}><td class="strong">${escapeHtml(item.name)}</td><td class="num nowrap">${formatQuantity(item.quantity, item.unit)}</td><td class="num nowrap dim">${formatQuantity(item.received, item.unit)}</td><td><div class="bar-line">${bar(item.share, index)}<span>${Math.round(item.share * 100)} %</span></div></td></tr>`)
+                  .join('')}</tbody>
+              </table></div>`
+            : UI.emptyState('', 'Списаний по сроку пока не было.')
+
+          const deficits = data.deficits.length
+            ? `<div class="glass table-wrap rise"><table class="table">
+                <thead><tr><th>Продукт</th><th class="num">Не хватило всего</th><th>Отказов в заказах</th></tr></thead>
+                <tbody>${data.deficits
+                  .map((item, index) => `<tr class="rise" ${UI.order(index)}><td class="strong">${escapeHtml(item.name)}</td><td class="num nowrap">${formatQuantity(item.missing, item.unit)}</td><td><div class="bar-line">${bar(item.rejections / maxRejections, index)}<span>${item.rejections}</span></div></td></tr>`)
+                  .join('')}</tbody>
+              </table></div>`
+            : UI.emptyState('', 'Отказов из-за нехватки продуктов пока не было.')
+
+          body.innerHTML = kpis + section('Прогноз стоп-листа', forecast, 3) + section('Что пора заказать', purchases, 5) + section('Списания по сроку', writeoffs, 6) + section('Самые дефицитные продукты', deficits, 7)
+
+          // Кольца заполняются после вставки в документ, чтобы сработал плавный переход.
+          requestAnimationFrame(() => body.querySelectorAll('.ring .front').forEach((circle) => {
+            if (silent) circle.style.transition = 'none'
+            circle.style.strokeDashoffset = circle.dataset.offset
+          }))
+        }
+
+        body.innerHTML = UI.loading()
+        render(false)
+        UI.live(() => render(true))
+      })()
+    </script>
+  </body>
+</html>
