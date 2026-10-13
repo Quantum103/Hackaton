@@ -403,7 +403,9 @@ func parseID(value string) (int64, error) {
 }
 
 func normalizeName(value string) string {
-	return strings.ToLower(strings.Join(strings.Fields(strings.ReplaceAll(strings.TrimSpace(value), "ё", "е")), " "))
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, "ё", "е")
+	return strings.Join(strings.Fields(value), " ")
 }
 
 func validUnit(unit contract.Unit) bool {
