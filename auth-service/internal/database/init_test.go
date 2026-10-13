@@ -135,3 +135,67 @@ func TestInitMigratesExistingNonDefaultAdministrator(t *testing.T) {
 		t.Fatalf("unexpected migrated administrator: name=%q email=%q role=%q", name, email, role)
 	}
 }
+
+func TestInitRemovesPreviouslyMigratedDefaultAdministrator(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "intermediate.db")
+	legacyPasswordHash := passwordHash(t, "admin123")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open intermediate DB: %v", err)
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE admins (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			email TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL
+		);
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			login TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL
+		);
+		CREATE TABLE accounts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+			password_hash TEXT NOT NULL,
+			role TEXT NOT NULL CHECK(role IN ('admin','viewer')),
+			created_at TEXT NOT NULL
+		);
+	`); err != nil {
+		db.Close()
+		t.Fatalf("create intermediate schema: %v", err)
+	}
+	if _, err := db.Exec(
+		"INSERT INTO admins(name,email,password) VALUES(?,?,?)",
+		"Super Admin", "admin@gmail.com", legacyPasswordHash,
+	); err != nil {
+		db.Close()
+		t.Fatalf("insert legacy default administrator: %v", err)
+	}
+	if _, err := db.Exec(
+		"INSERT INTO accounts(name,email,password_hash,role,created_at) VALUES(?,?,?,?,?)",
+		"Super Admin", "admin@gmail.com", legacyPasswordHash, "admin", "2026-01-01T00:00:00Z",
+	); err != nil {
+		db.Close()
+		t.Fatalf("insert previously migrated default account: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close intermediate DB: %v", err)
+	}
+
+	migrated, err := Init(path)
+	if err != nil {
+		t.Fatalf("upgrade intermediate DB: %v", err)
+	}
+	defer migrated.Close()
+
+	var count int
+	if err := migrated.QueryRow("SELECT COUNT(*) FROM accounts WHERE lower(email)=?", "admin@gmail.com").Scan(&count); err != nil {
+		t.Fatalf("check seeded account after upgrade: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("historical default login must not survive upgrade; got %d matching accounts", count)
+	}
+}
