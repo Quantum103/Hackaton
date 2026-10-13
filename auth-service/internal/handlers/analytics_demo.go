@@ -4,7 +4,6 @@ import (
 	"auth-service/internal/contract"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"math"
 	"net/http"
 	"sort"
