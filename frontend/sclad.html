@@ -564,10 +564,15 @@ async function loadServerData() {
   }
 }
 
-// Переход к форме входа не зависит от клиентского состояния сессии.
+// Показываем кнопку входа только когда в браузере нет сохранённой сессии.
 function renderAuthButton() {
+  const existingButton = document.getElementById('navLoginButton');
+  if (localStorage.getItem('stoplist.token')) {
+    existingButton?.remove();
+    return;
+  }
   const anchor = document.querySelector('.nav-dashboard-btn');
-  if (!anchor || document.getElementById('navLoginButton')) return;
+  if (!anchor || existingButton) return;
   const button = document.createElement('button');
   button.id = 'navLoginButton';
   button.className = 'nav-dashboard-btn';

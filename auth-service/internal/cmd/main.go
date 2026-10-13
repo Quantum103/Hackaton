@@ -3,6 +3,9 @@ package main
 import (
 	"auth-service/internal/database"
 	"auth-service/internal/handlers"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -38,15 +41,11 @@ func main() {
 	}
 	defer db.Close()
 
-	secret := strings.TrimSpace(os.Getenv("JWT_SECRET"))
-	if secret == "" {
-		secret = "local-development-only-change-this-secret"
-		log.Println("ВНИМАНИЕ: JWT_SECRET не задан; используется ключ для локальной разработки.")
+	secret, err := resolveJWTSecret(dbPath)
+	if err != nil {
+		log.Fatalf("Не удалось настроить секрет JWT: %v", err)
 	}
-	if len(secret) < 32 {
-		log.Fatal("JWT_SECRET должен содержать не менее 32 символов")
-	}
-	handlers.SetJWTSecret([]byte(secret))
+	handlers.SetJWTSecret(secret)
 
 	api := &handlers.API{DB: db}
 	mux := http.NewServeMux()
@@ -59,4 +58,43 @@ func main() {
 	handler := api.RevisionMiddleware(corsMiddleware(mux))
 	log.Printf("Stoplist API запущен на порту %s", port)
 	log.Fatal(http.ListenAndServe(":"+port, handler))
+}
+
+
+// resolveJWTSecret prefers an explicitly configured secret. For local Docker usage,
+// it creates a strong random key in the persistent data directory so tokens remain
+// valid across restarts without shipping a known secret in the compose file.
+func resolveJWTSecret(dbPath string) ([]byte, error) {
+	if configured := strings.TrimSpace(os.Getenv("JWT_SECRET")); configured != "" {
+		if len(configured) < 32 {
+			return nil, errors.New("JWT_SECRET должен содержать не менее 32 символов")
+		}
+		return []byte(configured), nil
+	}
+
+	secretPath := filepath.Join(filepath.Dir(dbPath), "jwt-secret")
+	secret, err := os.ReadFile(secretPath)
+	if err == nil {
+		value := strings.TrimSpace(string(secret))
+		if len(value) < 32 {
+			return nil, errors.New("файл jwt-secret содержит слишком короткий ключ")
+		}
+		if err := os.Chmod(secretPath, 0600); err != nil {
+			return nil, err
+		}
+		return []byte(value), nil
+	}
+	if !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	randomKey := make([]byte, 32)
+	if _, err := rand.Read(randomKey); err != nil {
+		return nil, err
+	}
+	value := hex.EncodeToString(randomKey)
+	if err := os.WriteFile(secretPath, []byte(value), 0600); err != nil {
+		return nil, err
+	}
+	return []byte(value), nil
 }
