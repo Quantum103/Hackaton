@@ -544,9 +544,9 @@
     <!-- Форма -->
     <form class="login-form" id="loginForm" onsubmit="handleLogin(event)">
       <div class="form-group">
-        <label class="form-label" for="username">Логин</label>
+        <label class="form-label" for="username">Почта</label>
         <input
-          type="text"
+          type="email"
           id="username"
           class="form-input"
           placeholder="Введите почту"
@@ -627,50 +627,6 @@ function createParticles() {
   }
 }
 
-// ===== ОБРАБОТКА ВХОДА =====
-function handleLogin(e) {
-  e.preventDefault();
-
-  const username = document.getElementById('username');
-  const password = document.getElementById('password');
-  const btn = document.getElementById('loginBtn');
-
-  // Сброс ошибок
-  username.classList.remove('error');
-  password.classList.remove('error');
-  document.getElementById('usernameError').classList.remove('visible');
-  document.getElementById('passwordError').classList.remove('visible');
-
-  let hasError = false;
-
-  if (!username.value.trim()) {
-    username.classList.add('error');
-    document.getElementById('usernameError').classList.add('visible');
-    hasError = true;
-  }
-
-  if (!password.value.trim()) {
-    password.classList.add('error');
-    document.getElementById('passwordError').classList.add('visible');
-    hasError = true;
-  }
-
-  if (hasError) return;
-
-  // Loading state
-  btn.classList.add('loading');
-  btn.disabled = true;
-
-  // Здесь будет запрос к бэкенду
-  // fetch('/api/login', { method: 'POST', body: JSON.stringify({ username, password }) })
-
-  setTimeout(() => {
-    btn.classList.remove('loading');
-    btn.disabled = false;
-    // window.location.href = 'index.html';
-  }, 2000);
-}
-
 // ===== ИНИЦИАЛИЗАЦИЯ =====
 document.addEventListener('DOMContentLoaded', () => {
   createParticles();
@@ -694,7 +650,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('passwordError').style.display = 'none';
 
     const username = usernameInput.value.trim();
-    const password = passwordInput.value.trim();
+    const password = passwordInput.value;
 
     // Базовая валидация
     if (!username) {
@@ -742,8 +698,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('loginForm');
     const hint = document.createElement('div');
     hint.style.cssText = 'margin-top:18px; font-size:13px; line-height:1.5; color:#a5a5a5; text-align:center';
-    hint.innerHTML = 'Нет аккаунта? <a href="app.html#/register" style="color:#fff">Зарегистрироваться</a>';
+    hint.textContent = 'Учётную запись создаёт администратор.';
     form.after(hint);
+
+    // Публичная регистрация показывается только для первоначального создания администратора.
+    API.get('/auth/setup-status').then((status) => {
+      if (!status.setupRequired || !document.body.contains(hint)) return;
+      hint.innerHTML = 'Первый запуск? <a href="app.html#/register" style="color:#fff">Создать администратора</a>';
+    }).catch(() => {
+      // При недоступном API оставляем безопасный текст без ссылки на саморегистрацию.
+    });
 
     // Health endpoint не зависит от входа и помогает отличить недоступный сервер от неверных данных.
     API.get('/health').catch((error) => {
