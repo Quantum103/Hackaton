@@ -218,8 +218,7 @@
     const message = document.getElementById('authMsg')
     form.querySelector('input').focus()
 
-    // Без сервера войти нельзя, а без входа не открывается ни один раздел.
-    // Проверяем связь сразу и объясняем, что делать, не дожидаясь неудачной попытки входа.
+    // Проверяем доступность API. Состояние сессии и права определяет backend.
     API.get('/health').catch((error) => {
       if (!document.body.contains(form)) return
       form.insertAdjacentHTML('afterend', `
