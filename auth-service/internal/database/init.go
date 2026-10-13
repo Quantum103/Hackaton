@@ -127,6 +127,25 @@ func Init(dbPath string) (*sql.DB, error) {
 		}
 	}
 
+	// If an intermediate build already copied the old seeded admin into accounts,
+	// remove it there too. Otherwise an existing Docker volume would keep the known
+	// default login even though the legacy migration above now skips it.
+	var seededID int64
+	var seededHash string
+	err = db.QueryRow(
+		"SELECT id,password_hash FROM accounts WHERE lower(email)=?",
+		"admin@gmail.com",
+	).Scan(&seededID, &seededHash)
+	if err == nil && bcrypt.CompareHashAndPassword([]byte(seededHash), []byte("admin123")) == nil {
+		if _, err := db.Exec("DELETE FROM accounts WHERE id=?", seededID); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("remove historical default administrator: %w", err)
+		}
+	} else if err != nil && err != sql.ErrNoRows {
+		db.Close()
+		return nil, fmt.Errorf("check historical default administrator: %w", err)
+	}
+
 	// Keep legacy staff accounts too. Old user records already store bcrypt password
 	// hashes; their login value is retained as the email/login identifier.
 	if _, err := db.Exec(
