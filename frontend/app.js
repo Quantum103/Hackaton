@@ -177,9 +177,9 @@
       <section class="auth">
         <div class="auth-main">
           <div class="auth-card">
-            <span class="label home-badge">${isRegister ? 'Новый аккаунт' : 'С возвращением'}</span>
-            <h1>${isRegister ? 'Регистрация' : 'Вход'}</h1>
-            <p class="page-sub">${isRegister ? 'Создайте аккаунт, чтобы вести склад и принимать поставки.' : 'Войдите, чтобы открыть склад и поставки.'}</p>
+            <span class="label home-badge">${isRegister ? 'Первоначальная настройка' : 'С возвращением'}</span>
+            <h1>${isRegister ? 'Создание администратора' : 'Вход'}</h1>
+            <p class="page-sub">${isRegister ? 'Создайте первый аккаунт администратора. После этого сотрудников сможет добавлять только администратор.' : 'Войдите, чтобы открыть склад и поставки.'}</p>
             <form id="authForm" novalidate>
               ${
                 isRegister
@@ -193,7 +193,7 @@
                   ? '<label class="field"><span class="label">Пароль ещё раз</span><input class="input" name="repeat" type="password" autocomplete="new-password" placeholder="Повторите пароль" /></label>'
                   : ''
               }
-              <button type="submit" class="btn btn-solid">${isRegister ? 'Создать аккаунт' : 'Войти'}</button>
+              <button type="submit" class="btn btn-solid">${isRegister ? 'Создать администратора' : 'Войти'}</button>
               <span class="form-msg" id="authMsg" role="status"></span>
             </form>
             <p class="auth-switch">
