@@ -164,11 +164,12 @@ func currentAuth(r *http.Request) *authContext {
 	return auth
 }
 
-// SetupStatus exposes only whether the very first administrator must be created.
-// Once an account exists, public self-registration is permanently closed.
+// SetupStatus exposes only whether the first administrator must be created.
+// Legacy databases can contain viewer accounts but no administrator, so the
+// bootstrap state is based on admin presence rather than total account count.
 func (a *API) SetupStatus(w http.ResponseWriter, r *http.Request) {
 	var count int
-	if err := a.DB.QueryRow("SELECT COUNT(*) FROM accounts").Scan(&count); err != nil {
+	if err := a.DB.QueryRow("SELECT COUNT(*) FROM accounts WHERE role='admin'").Scan(&count); err != nil {
 		a.writeError(w, http.StatusInternalServerError, "Не удалось проверить настройку учётных записей")
 		return
 	}
@@ -197,9 +198,9 @@ func validateAccountRequest(w http.ResponseWriter, r *http.Request) (contract.Re
 	return req, true
 }
 
-// Register is a one-time bootstrap endpoint. Only when the database is empty can a
-// public request create an account, and that account is always the first administrator.
-// Further accounts must be created by an authenticated administrator via POST /api/users.
+// Register is a one-time bootstrap endpoint. It is enabled only when no administrator
+// exists, and always creates an admin. Further accounts must be created by an
+// authenticated administrator via POST /api/users.
 func (a *API) Register(w http.ResponseWriter, r *http.Request) {
 	requestMu.Lock()
 	defer requestMu.Unlock()
@@ -210,12 +211,12 @@ func (a *API) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var count int
-	if err := a.DB.QueryRow("SELECT COUNT(*) FROM accounts").Scan(&count); err != nil {
+	var adminCount int
+	if err := a.DB.QueryRow("SELECT COUNT(*) FROM accounts WHERE role='admin'").Scan(&adminCount); err != nil {
 		a.writeError(w, http.StatusInternalServerError, "Не удалось проверить пользователей")
 		return
 	}
-	if count != 0 {
+	if adminCount != 0 {
 		a.writeError(w, http.StatusForbidden, "Самостоятельная регистрация закрыта. Попросите администратора создать учётную запись")
 		return
 	}
