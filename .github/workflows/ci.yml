@@ -1,0 +1,45 @@
+name: Validate Stoplist
+
+on:
+  push:
+    branches:
+      - main
+      - fix/fullstack-api-integration
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: auth-service/go.mod
+          cache-dependency-path: auth-service/go.sum
+      - name: Test and vet backend
+        working-directory: auth-service
+        run: |
+          go test ./...
+          go vet ./...
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: |
+          node --check frontend/api.js
+          node --check frontend/shared.js
+          node --check frontend/app.js
