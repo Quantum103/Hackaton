@@ -76,6 +76,37 @@ jobs:
           TOKEN=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])' <<< "$SESSION_JSON")
           test -n "$TOKEN"
 
+          # Only the one-time bootstrap is public; all real data endpoints require JWT.
+          SETUP=$(curl --fail --silent http://localhost/api/auth/setup-status)
+          test "$(python3 -c 'import json,sys; print(json.load(sys.stdin)["setupRequired"])' <<< "$SETUP")" = "False"
+          ANON_STATUS=$(curl --silent -o /tmp/anon-hot.json -w '%{http_code}' http://localhost/api/hot-offers)
+          test "$ANON_STATUS" = "401"
+
+          SELF_REGISTER_STATUS=$(curl --silent -o /tmp/self-register.json -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -d '{"name":"Unexpected Account","email":"not-allowed@example.test","password":"not-allowed-123"}' \
+            http://localhost/api/auth/register)
+          test "$SELF_REGISTER_STATUS" = "403"
+
+          curl --fail --silent -o /tmp/viewer.json \
+            -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' \
+            -d '{"name":"CI Viewer","email":"ci-viewer@example.test","password":"viewer-pass-123"}' \
+            http://localhost/api/users
+          test "$(python3 -c 'import json,sys; print(json.load(sys.stdin)["role"])' < /tmp/viewer.json)" = "viewer"
+
+          VIEWER_SESSION=$(curl --fail --silent \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"ci-viewer@example.test","password":"viewer-pass-123"}' \
+            http://localhost/api/auth/login)
+          VIEWER_TOKEN=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])' <<< "$VIEWER_SESSION")
+          test -n "$VIEWER_TOKEN"
+          curl --fail --silent -H "Authorization: Bearer $VIEWER_TOKEN" http://localhost/api/hot-offers >/dev/null
+          VIEWER_WRITE_STATUS=$(curl --silent -o /tmp/viewer-write.json -w '%{http_code}' \
+            -X POST -H "Authorization: Bearer $VIEWER_TOKEN" \
+            -H 'Content-Type: application/json' -d '{}' http://localhost/api/supplies)
+          test "$VIEWER_WRITE_STATUS" = "403"
+
           PRODUCTS=$(curl --fail --silent -H "Authorization: Bearer $TOKEN" http://localhost/api/products)
           test "$(python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' <<< "$PRODUCTS")" = "0"
 
@@ -99,3 +130,8 @@ jobs:
             -H 'Content-Type: application/json' \
             -d "$ORDER_JSON" \
             http://localhost/api/orders
+
+          curl --fail --silent -X POST -H "Authorization: Bearer $TOKEN" http://localhost/api/auth/logout
+          REVOKED_STATUS=$(curl --silent -o /tmp/revoked.json -w '%{http_code}' -H "Authorization: Bearer $TOKEN" http://localhost/api/products)
+          test "$REVOKED_STATUS" = "401"
+
