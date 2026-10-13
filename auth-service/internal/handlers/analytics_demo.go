@@ -340,7 +340,9 @@ func (a *API) DemoRestock(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "Пополнение сохранено, но не удалось прочитать поставку")
 		return
 	}
-	a.sendJSON(w, http.StatusOK, supply)
+	_ = supply // The contract returns the current demo clock state for this operation.
+	current, speed := a.nowAndSpeed()
+	a.sendJSON(w, http.StatusOK, contract.DemoState{Now: current, Speed: speed, Shifted: a.shifted()})
 }
 
 func (a *API) DemoReset(w http.ResponseWriter, r *http.Request) {
