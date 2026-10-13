@@ -30,9 +30,10 @@ const API = (() => {
 
   const getToken = () => localStorage.getItem(TOKEN_KEY)
 
+  // Cached user data is display-only. The backend decides whether its token/session is valid.
   function getUser() {
     try {
-      return getToken() ? JSON.parse(localStorage.getItem(USER_KEY)) : null
+      return JSON.parse(localStorage.getItem(USER_KEY)) || null
     } catch {
       return null
     }
