@@ -171,15 +171,12 @@ const UI = (() => {
     return Boolean(user && user.role === 'admin')
   }
 
-  // Рисует шапку и проверяет вход. Возвращает false, если пользователя пришлось отправить на вход.
+  // Шапка отвечает только за отображение и навигацию. Доступ к данным
+  // проверяет API: страница не перенаправляет пользователя при 401/403.
   function shell(active) {
     const user = API.getUser()
-    if (!user) {
-      location.replace('login.html?next=' + encodeURIComponent(active))
-      return false
-    }
     const app = document.getElementById('app')
-    app.classList.toggle('is-viewer', !isAdmin())
+    app.classList.remove('is-viewer')
 
     const links = NAV.map(([key, label, href]) => `<a href="${href}"${key === active ? ' class="active"' : ''}>${label}</a>`).join('')
     const old = app.querySelector('.nav')
@@ -193,17 +190,19 @@ const UI = (() => {
         <a class="logo" href="index.html">Stoplist</a>
         <nav class="nav-links" aria-label="Основная навигация">${links}</nav>
         <div class="nav-actions">
-          <span class="nav-user" title="${escapeHtml(user.email)}">${escapeHtml(user.name)}</span>
-          ${isAdmin() ? '<a class="btn btn-line btn-sm" href="app.html#/admin">Админ</a>' : ''}
+          <span class="nav-user" title="${escapeHtml(user?.email || '')}">${escapeHtml(user?.name || 'Сессия определяется сервером')}</span>
+          <a class="btn btn-line btn-sm" href="app.html#/admin">Администрирование</a>
           <span class="label tag clock-chip" id="clockChip" hidden></span>
+          <a class="btn btn-line btn-sm" href="login.html">Войти</a>
           <button type="button" class="btn btn-line btn-sm" data-logout>Выйти</button>
         </div>
         <button class="burger" id="burger" aria-label="Открыть меню" aria-expanded="false" aria-controls="menu"><span></span></button>
       </header>
       <nav class="menu" id="menu" aria-label="Мобильная навигация">
         ${links}<div class="divider"></div>
-        ${isAdmin() ? '<a href="app.html#/admin">Администрирование</a>' : ''}
-        <a href="index.html" data-logout>Выйти (${escapeHtml(user.name)})</a>
+        <a href="app.html#/admin">Администрирование</a>
+        <a href="login.html">Войти</a>
+        <a href="index.html" data-logout>Завершить сессию</a>
       </nav>`,
     )
     return true
@@ -243,19 +242,11 @@ const UI = (() => {
 
   let seenRev = API.rev()
 
-  // Запрос с общей обработкой: при потере сессии отправляем на вход.
+  // Ошибки API показываются вызывающей страницей; 401/403 не меняют маршрут.
   async function call(promise) {
-    try {
-      const result = await promise
-      seenRev = API.rev()
-      return result
-    } catch (error) {
-      if (error.status === 401) {
-        API.clearSession()
-        location.href = 'login.html'
-      }
-      throw error
-    }
+    const result = await promise
+    seenRev = API.rev()
+    return result
   }
 
   const ALERT_COLOR = { warning: STATUS.warning.color, critical: STATUS.critical.color, expired: STATUS.expired.color, stop: STATUS.expired.color, ok: STATUS.ok.color }
@@ -292,7 +283,6 @@ const UI = (() => {
   // С настоящим бэкендом вместо опроса сюда подключается поток событий (SSE).
   function live(onChange) {
     const tick = async () => {
-      if (!API.getUser()) return
       try {
         const state = await API.get('/pulse')
         const chip = document.getElementById('clockChip')
@@ -300,24 +290,13 @@ const UI = (() => {
           chip.hidden = state.speed === 1
           chip.textContent = '×' + state.speed + ' · ' + formatDateTime(state.now)
         }
-        showToasts(state.alerts)
-        // Роль могли изменить, пока страница открыта.
-        const cached = API.getUser()
-        const fresh = await API.get('/auth/me')
-        if (cached && fresh.role !== cached.role) {
-          API.updateUser(fresh)
-          location.reload()
-          return
-        }
+        showToasts(state.alerts || [])
         if (state.rev !== seenRev) {
           seenRev = state.rev
           onChange()
         }
-      } catch (error) {
-        if (error.status === 401) {
-          API.clearSession()
-          location.href = 'login.html'
-        }
+      } catch {
+        // При сетевой ошибке ничего не перенаправляем; следующий опрос повторит запрос.
       }
     }
     tick()
