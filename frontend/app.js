@@ -200,7 +200,7 @@
               ${
                 isRegister
                   ? `Уже есть аккаунт? <a href="login.html?next=${encodeURIComponent(next)}">Войти</a>`
-                  : `Нет аккаунта? <a href="#/register?next=${encodeURIComponent(next)}">Зарегистрироваться</a>`
+                  : 'Учётную запись создаёт администратор.'
               }
             </p>
           </div>
@@ -525,7 +525,7 @@
               .join('')}
           </tbody>
         </table></div>
-        ${users.length === 1 ? '<p class="page-sub" style="margin-top:16px">Других аккаунтов пока нет. Когда коллеги зарегистрируются, они появятся здесь, и вы сможете выдать им права.</p>' : ''}`
+        ${users.length === 1 ? '<p class="page-sub" style="margin-top:16px">Других аккаунтов пока нет. Создавайте учётные записи сотрудников с помощью формы выше.</p>' : ''}`
     }
 
     body.addEventListener('click', async (event) => {
