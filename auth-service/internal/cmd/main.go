@@ -2,10 +2,10 @@ package main
 
 import (
 	"auth-service/internal/database"
+	"auth-service/internal/handlers"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"auth-service/internal/handlers"
 	"log"
 	"net/http"
 	"os"
