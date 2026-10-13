@@ -65,6 +65,31 @@ const API = (() => {
 
   /* ---------- Запрос к серверу ---------- */
 
+  // Let the backend decide access. When a protected request returns 401, guide the
+  // visitor to the login form instead of leaving a page full of "login required" errors.
+  // Credentials and token validity are never inferred on the client.
+  function redirectToLogin() {
+    if (window.location.pathname.endsWith('/login.html')) return
+
+    const page = window.location.pathname.split('/').pop()
+    const pageNext = {
+      'sclad.html': 'stock',
+      'supplies.html': 'supplies',
+      'orders.html': 'orders',
+      'stoplist.html': 'stoplist',
+      'analytics.html': 'analytics',
+    }
+    let next = pageNext[page] || ''
+    if (page === 'app.html') {
+      const match = window.location.hash.match(/^#\/?([^?/]*)/)
+      if (match) next = match[1]
+    }
+
+    const loginURL = new URL('login.html', window.location.href)
+    if (next && /^[a-z-]+$/.test(next)) loginURL.searchParams.set('next', next)
+    window.location.replace(loginURL.toString())
+  }
+
   async function remote(method, path, body) {
     const headers = { Accept: 'application/json' }
     if (body !== undefined) headers['Content-Type'] = 'application/json'
@@ -89,6 +114,13 @@ const API = (() => {
     if (response.status === 204) return null
     const data = await response.json().catch(() => null)
     if (!response.ok) {
+      if (
+        response.status === 401 &&
+        !['/auth/login', '/auth/register', '/auth/setup-status', '/health'].includes(path)
+      ) {
+        clearSession()
+        redirectToLogin()
+      }
       const down = response.status >= 502 && response.status <= 504
       throw new ApiError(response.status, down ? 'Сервер недоступен' : data && data.message, data)
     }
