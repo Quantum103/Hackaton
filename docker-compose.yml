@@ -7,7 +7,7 @@ services:
     environment:
       SQLITE_DB_PATH: /root/data/app.db
       PORT: "8080"
-      JWT_SECRET: ${JWT_SECRET:-local-development-only-change-this-secret}
+      JWT_SECRET: ${JWT_SECRET:-}
     volumes:
       - db_data:/root/data
     networks:
