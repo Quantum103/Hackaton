@@ -93,7 +93,7 @@ jobs:
             -d "{\"name\":\"CI test dish\",\"ingredients\":[{\"productId\":\"$PRODUCT_ID\",\"quantity\":100}]}" \
             http://localhost/api/dishes)
           DISH_ID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["dishId"])' <<< "$DISH_JSON")
-          ORDER_JSON=$(python3 -c 'import json,sys; print(json.dumps({"items":[{"dishId":sys.argv[1],"portions":2]}))' "$DISH_ID")
+          ORDER_JSON=$(python3 -c 'import json,sys; print(json.dumps({"items":[{"dishId":sys.argv[1],"portions":2}]}))' "$DISH_ID")
           curl --fail --silent \
             -X POST -H "Authorization: Bearer $TOKEN" \
             -H 'Content-Type: application/json' \
