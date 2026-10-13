@@ -58,7 +58,7 @@ type Error struct {
 type RegisterRequest struct {
 	Name     string `json:"name"`
 	Email    string `json:"email"`
-	Password string `json:"password"` // не короче 6 символов
+	Password string `json:"password"` // не короче 8 символов
 }
 
 type LoginRequest struct {
