@@ -37,6 +37,8 @@ func Init(dbPath string) (*sql.DB, error) {
 		"CREATE TABLE IF NOT EXISTS auth_sessions (" +
 		"jti TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, " +
 		"expires_at TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0);" +
+		"CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_active ON auth_sessions(user_id, revoked, expires_at);" +
+		"CREATE INDEX IF NOT EXISTS idx_accounts_role ON accounts(role);" +
 		"CREATE TABLE IF NOT EXISTS products (" +
 		"id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, norm_name TEXT NOT NULL UNIQUE, " +
 		"unit TEXT NOT NULL CHECK(unit IN ('g','ml','pcs')));" +
@@ -86,6 +88,24 @@ func Init(dbPath string) (*sql.DB, error) {
 	); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate legacy administrators: %w", err)
+	}
+
+	// Keep legacy staff accounts too. Old user records already store bcrypt password
+	// hashes; their login value is retained as the email/login identifier.
+	if _, err := db.Exec(
+		"INSERT OR IGNORE INTO accounts(name, email, password_hash, role, created_at) " +
+			"SELECT login, lower(login), password, 'viewer', ? FROM users " +
+			"WHERE login IS NOT NULL AND trim(login) <> '' AND password IS NOT NULL",
+		time.Now().UTC().Format(time.RFC3339Nano),
+	); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate legacy users: %w", err)
+	}
+
+	// Old revoked/expired tokens never need to remain in the sessions table.
+	if _, err := db.Exec("DELETE FROM auth_sessions WHERE revoked <> 0 OR expires_at <= ?", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("cleanup expired sessions: %w", err)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
