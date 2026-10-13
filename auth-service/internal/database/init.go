@@ -3,8 +3,10 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 )
 
@@ -37,6 +39,8 @@ func Init(dbPath string) (*sql.DB, error) {
 		"CREATE TABLE IF NOT EXISTS auth_sessions (" +
 		"jti TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, " +
 		"expires_at TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0);" +
+		"CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_active ON auth_sessions(user_id, revoked, expires_at);" +
+		"CREATE INDEX IF NOT EXISTS idx_accounts_role ON accounts(role);" +
 		"CREATE TABLE IF NOT EXISTS products (" +
 		"id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, norm_name TEXT NOT NULL UNIQUE, " +
 		"unit TEXT NOT NULL CHECK(unit IN ('g','ml','pcs')));" +
@@ -76,16 +80,69 @@ func Init(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("create sqlite schema: %w", err)
 	}
 
-	// Migrate administrator records created by the older application.
-	// Fresh installations intentionally start without a seeded account: the first
-	// successful registration becomes the administrator, as specified by API.md.
+	// Migrate real administrator accounts from the older application. Its historical
+	// startup routine seeded the public, well-known admin@gmail.com / admin123 account.
+	// Do not carry that default credential into the new auth system: on an old volume
+	// with no real administrator, the one-time admin setup screen must become available.
+	type legacyAdmin struct {
+		name     string
+		email    string
+		password string
+	}
+	legacyRows, err := db.Query("SELECT name,email,password FROM admins WHERE email IS NOT NULL AND password IS NOT NULL")
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("read legacy administrators: %w", err)
+	}
+	legacyAdmins := make([]legacyAdmin, 0)
+	for legacyRows.Next() {
+		var item legacyAdmin
+		if err := legacyRows.Scan(&item.name, &item.email, &item.password); err != nil {
+			legacyRows.Close()
+			db.Close()
+			return nil, fmt.Errorf("read legacy administrator: %w", err)
+		}
+		legacyAdmins = append(legacyAdmins, item)
+	}
+	if err := legacyRows.Err(); err != nil {
+		legacyRows.Close()
+		db.Close()
+		return nil, fmt.Errorf("read legacy administrators: %w", err)
+	}
+	legacyRows.Close()
+
+	createdAt := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, admin := range legacyAdmins {
+		isKnownDefault := strings.EqualFold(strings.TrimSpace(admin.email), "admin@gmail.com") &&
+			bcrypt.CompareHashAndPassword([]byte(admin.password), []byte("admin123")) == nil
+		if isKnownDefault {
+			continue
+		}
+		if _, err := db.Exec(
+			"INSERT OR IGNORE INTO accounts(name,email,password_hash,role,created_at) VALUES(?,?,?,'admin',?)",
+			strings.TrimSpace(admin.name), strings.ToLower(strings.TrimSpace(admin.email)), admin.password, createdAt,
+		); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("migrate legacy administrator: %w", err)
+		}
+	}
+
+	// Keep legacy staff accounts too. Old user records already store bcrypt password
+	// hashes; their login value is retained as the email/login identifier.
 	if _, err := db.Exec(
 		"INSERT OR IGNORE INTO accounts(name, email, password_hash, role, created_at) " +
-			"SELECT name, lower(email), password, 'admin', ? FROM admins WHERE email IS NOT NULL AND password IS NOT NULL",
+			"SELECT login, lower(login), password, 'viewer', ? FROM users " +
+			"WHERE login IS NOT NULL AND trim(login) <> '' AND password IS NOT NULL",
 		time.Now().UTC().Format(time.RFC3339Nano),
 	); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("migrate legacy administrators: %w", err)
+		return nil, fmt.Errorf("migrate legacy users: %w", err)
+	}
+
+	// Old revoked/expired tokens never need to remain in the sessions table.
+	if _, err := db.Exec("DELETE FROM auth_sessions WHERE revoked <> 0 OR expires_at <= ?", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("cleanup expired sessions: %w", err)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
