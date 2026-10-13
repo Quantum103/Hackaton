@@ -187,7 +187,7 @@
                   : ''
               }
               <label class="field"><span class="label">Почта</span><input class="input" name="email" type="email" autocomplete="email" placeholder="you@example.com" /></label>
-              <label class="field"><span class="label">Пароль</span><input class="input" name="password" type="password" autocomplete="${isRegister ? 'new-password' : 'current-password'}" placeholder="${isRegister ? 'Не короче 6 символов' : 'Ваш пароль'}" /></label>
+              <label class="field"><span class="label">Пароль</span><input class="input" name="password" type="password" autocomplete="${isRegister ? 'new-password' : 'current-password'}" placeholder="${isRegister ? 'Не короче 8 символов' : 'Ваш пароль'}" /></label>
               ${
                 isRegister
                   ? '<label class="field"><span class="label">Пароль ещё раз</span><input class="input" name="repeat" type="password" autocomplete="new-password" placeholder="Повторите пароль" /></label>'
@@ -228,6 +228,19 @@
         </div>`)
     })
 
+    if (isRegister) {
+      API.get('/auth/setup-status').then((status) => {
+        if (status.setupRequired || !document.body.contains(form)) return
+        form.hidden = true
+        const notice = document.createElement('p')
+        notice.className = 'auth-switch'
+        notice.textContent = 'Первый администратор уже создан. Попросите администратора создать для вас учётную запись.'
+        form.after(notice)
+      }).catch(() => {
+        // API errors will be shown by registration submission if setup status is unavailable.
+      })
+    }
+
     form.addEventListener('submit', async (event) => {
       event.preventDefault()
       const data = Object.fromEntries(new FormData(form))
@@ -237,7 +250,7 @@
       const invalid = []
       if (isRegister && !data.name.trim()) invalid.push(['name', 'Укажите имя'])
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(data.email.trim())) invalid.push(['email', 'Укажите корректную почту'])
-      if (isRegister ? data.password.length < 6 : !data.password) invalid.push(['password', isRegister ? 'Пароль должен быть не короче 6 символов' : 'Введите пароль'])
+      if (isRegister ? data.password.length < 8 : !data.password) invalid.push(['password', isRegister ? 'Пароль должен быть не короче 8 символов' : 'Введите пароль'])
       if (isRegister && data.password !== data.repeat) invalid.push(['repeat', 'Пароли не совпадают'])
       if (invalid.length) {
         invalid.forEach(([name]) => form.elements[name].classList.add('is-invalid'))
@@ -456,6 +469,19 @@
         <h2 class="panel-title">Пользователи</h2>
         <span class="form-msg" id="usersMsg" role="status"></span>
       </div>
+      <form id="createUserForm" class="glass form" style="margin-bottom:20px" novalidate>
+        <h3 class="panel-title">Создать учётную запись</h3>
+        <p class="page-sub" style="margin:0 0 16px">Новые пользователи получают права только на просмотр. Передайте им почту и заданный пароль.</p>
+        <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+          <label class="field"><span class="label">Имя</span><input class="input" name="name" autocomplete="name" maxlength="120" required placeholder="Имя сотрудника" /></label>
+          <label class="field"><span class="label">Почта</span><input class="input" name="email" type="email" autocomplete="email" maxlength="254" required placeholder="staff@example.com" /></label>
+          <label class="field"><span class="label">Пароль</span><input class="input" name="password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required placeholder="Не короче 8 символов" /></label>
+        </div>
+        <div class="form-foot">
+          <button type="submit" class="btn btn-solid">Создать пользователя</button>
+          <span class="form-msg" id="createUserMsg" role="status"></span>
+        </div>
+      </form>
       <div id="usersBody">${loading()}</div>
     </main>`
 
@@ -515,6 +541,33 @@
         await loadUsers()
       } catch (error) {
         setMessage(message, error.message, true)
+        button.disabled = false
+      }
+    })
+
+    const createUserForm = document.getElementById('createUserForm')
+    const createUserMsg = document.getElementById('createUserMsg')
+    createUserForm.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      const data = Object.fromEntries(new FormData(createUserForm))
+      const name = String(data.name || '').trim()
+      const email = String(data.email || '').trim()
+      const password = String(data.password || '')
+      if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || password.length < 8 || password.length > 72) {
+        setMessage(createUserMsg, 'Проверьте имя, почту и пароль длиной от 8 до 72 символов', true)
+        return
+      }
+      const button = createUserForm.querySelector('[type=submit]')
+      button.disabled = true
+      setMessage(createUserMsg, '')
+      try {
+        const created = await call(API.post('/users', { name, email, password }))
+        createUserForm.reset()
+        setMessage(createUserMsg, `Учётная запись «${created.name}» создана. Роль: просмотр.`)
+        await loadUsers()
+      } catch (error) {
+        setMessage(createUserMsg, error.message || 'Не удалось создать пользователя', true)
+      } finally {
         button.disabled = false
       }
     })
