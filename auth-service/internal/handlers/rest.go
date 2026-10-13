@@ -341,6 +341,8 @@ func (a *API) createSession(userID int64, user contract.User) (contract.Session,
 	if err != nil {
 		return contract.Session{}, err
 	}
+	// Keep the session table compact without touching active sessions.
+	_, _ = a.DB.Exec("DELETE FROM auth_sessions WHERE revoked <> 0 OR expires_at <= ?", now.Format(time.RFC3339Nano))
 	if _, err := a.DB.Exec(
 		"INSERT INTO auth_sessions(jti,user_id,expires_at,revoked) VALUES(?,?,?,0)",
 		jti, userID, expires.Format(time.RFC3339Nano),
