@@ -220,19 +220,14 @@
 
     // Без сервера войти нельзя, а без входа не открывается ни один раздел.
     // Проверяем связь сразу и объясняем, что делать, не дожидаясь неудачной попытки входа.
-    if (!API.mock) {
-      API.get('/pulse').catch((error) => {
-        if (!document.body.contains(form) || error.status === 401) return
-        form.insertAdjacentHTML(
-          'beforebegin',
-          `<div class="server-note" role="alert">
-            <b>${error.status === 404 ? 'Бэкенд пока не отдаёт данные сайта' : 'Сервер недоступен'}</b>
-            <span>Вход и разделы сайта работают только с запущенным бэкендом. Чтобы посмотреть сайт без него, включите режим с данными в браузере.</span>
-            <a class="btn btn-solid btn-sm" href="?mock=1">Открыть без сервера</a>
-          </div>`,
-        )
-      })
-    }
+    API.get('/health').catch((error) => {
+      if (!document.body.contains(form)) return
+      form.insertAdjacentHTML('afterend', `
+        <div class="glass empty" style="margin-top:16px">
+          <h3>Сервер недоступен</h3>
+          <p>${escapeHtml(error.message)}</p>
+        </div>`)
+    })
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault()
