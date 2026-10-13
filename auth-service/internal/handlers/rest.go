@@ -39,6 +39,7 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		a.sendJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	mux.HandleFunc("GET /api/auth/setup-status", a.SetupStatus)
 	mux.HandleFunc("POST /api/auth/register", a.Register)
 	mux.HandleFunc("POST /api/auth/login", a.Login)
 
@@ -49,6 +50,7 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	authed("POST", "/api/auth/logout", false, a.Logout)
 	authed("GET", "/api/auth/me", false, a.Me)
 	authed("GET", "/api/users", true, a.Users)
+	authed("POST", "/api/users", true, a.CreateUser)
 	authed("POST", "/api/users/{id}/role", true, a.SetUserRole)
 
 	authed("GET", "/api/products", false, a.Products)
@@ -162,35 +164,59 @@ func currentAuth(r *http.Request) *authContext {
 	return auth
 }
 
-func (a *API) Register(w http.ResponseWriter, r *http.Request) {
-	requestMu.Lock()
-	defer requestMu.Unlock()
+// SetupStatus exposes only whether the very first administrator must be created.
+// Once an account exists, public self-registration is permanently closed.
+func (a *API) SetupStatus(w http.ResponseWriter, r *http.Request) {
+	var count int
+	if err := a.DB.QueryRow("SELECT COUNT(*) FROM accounts").Scan(&count); err != nil {
+		a.writeError(w, http.StatusInternalServerError, "Не удалось проверить настройку учётных записей")
+		return
+	}
+	a.sendJSON(w, http.StatusOK, map[string]bool{"setupRequired": count == 0})
+}
 
+func validateAccountRequest(w http.ResponseWriter, r *http.Request) (contract.RegisterRequest, bool) {
 	var req contract.RegisterRequest
 	if err := decodeJSON(w, r, &req); err != nil {
-		a.writeError(w, http.StatusBadRequest, "Проверьте формат данных регистрации")
-		return
+		return req, false
 	}
 	req.Name = strings.TrimSpace(req.Name)
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	if req.Name == "" || len(req.Name) > 120 {
-		a.writeError(w, http.StatusBadRequest, "Укажите имя длиной до 120 символов")
-		return
+		return req, false
 	}
 	if len(req.Email) > 254 {
-		a.writeError(w, http.StatusBadRequest, "Укажите корректную почту")
-		return
+		return req, false
 	}
 	if address, err := mail.ParseAddress(req.Email); err != nil || address.Address != req.Email {
-		a.writeError(w, http.StatusBadRequest, "Укажите корректную почту")
+		return req, false
+	}
+	if len(req.Password) < 8 || len(req.Password) > 72 {
+		return req, false
+	}
+	return req, true
+}
+
+// Register is a one-time bootstrap endpoint. Only when the database is empty can a
+// public request create an account, and that account is always the first administrator.
+// Further accounts must be created by an authenticated administrator via POST /api/users.
+func (a *API) Register(w http.ResponseWriter, r *http.Request) {
+	requestMu.Lock()
+	defer requestMu.Unlock()
+
+	req, ok := validateAccountRequest(w, r)
+	if !ok {
+		a.writeError(w, http.StatusBadRequest, "Укажите имя, корректную почту и пароль длиной от 8 до 72 символов")
 		return
 	}
-	if len(req.Password) < 6 {
-		a.writeError(w, http.StatusBadRequest, "Пароль должен содержать не менее 6 символов")
+
+	var count int
+	if err := a.DB.QueryRow("SELECT COUNT(*) FROM accounts").Scan(&count); err != nil {
+		a.writeError(w, http.StatusInternalServerError, "Не удалось проверить пользователей")
 		return
 	}
-	if len(req.Password) > 72 {
-		a.writeError(w, http.StatusBadRequest, "Пароль слишком длинный")
+	if count != 0 {
+		a.writeError(w, http.StatusForbidden, "Самостоятельная регистрация закрыта. Попросите администратора создать учётную запись")
 		return
 	}
 
@@ -199,41 +225,71 @@ func (a *API) Register(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "Не удалось создать пароль")
 		return
 	}
-	var count int
-	if err := a.DB.QueryRow("SELECT COUNT(*) FROM accounts").Scan(&count); err != nil {
-		a.writeError(w, http.StatusInternalServerError, "Не удалось проверить пользователей")
-		return
-	}
-	role := contract.RoleViewer
-	if count == 0 {
-		role = contract.RoleAdmin
-	}
 	createdAt := time.Now().UTC().Format(time.RFC3339Nano)
 	result, err := a.DB.Exec(
 		"INSERT INTO accounts(name,email,password_hash,role,created_at) VALUES(?,?,?,?,?)",
-		req.Name, req.Email, string(hash), string(role), createdAt,
+		req.Name, req.Email, string(hash), string(contract.RoleAdmin), createdAt,
 	)
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "unique") || strings.Contains(strings.ToLower(err.Error()), "constraint") {
 			a.writeError(w, http.StatusConflict, "Аккаунт с такой почтой уже существует")
 			return
 		}
-		a.writeError(w, http.StatusInternalServerError, "Не удалось создать аккаунт")
+		a.writeError(w, http.StatusInternalServerError, "Не удалось создать администратора")
 		return
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		a.writeError(w, http.StatusInternalServerError, "Не удалось создать аккаунт")
+		a.writeError(w, http.StatusInternalServerError, "Не удалось создать администратора")
 		return
 	}
-	user := contract.User{ID: strconv.FormatInt(id, 10), Name: req.Name, Email: req.Email, Role: role}
+	user := contract.User{ID: strconv.FormatInt(id, 10), Name: req.Name, Email: req.Email, Role: contract.RoleAdmin}
 	session, err := a.createSession(id, user)
 	if err != nil {
-		a.writeError(w, http.StatusInternalServerError, "Аккаунт создан, но не удалось открыть сессию")
+		a.writeError(w, http.StatusInternalServerError, "Администратор создан, но не удалось открыть сессию")
 		return
 	}
 	a.bumpRev()
 	a.sendJSON(w, http.StatusOK, session)
+}
+
+// CreateUser can only be reached through the admin-protected route. New users start
+// with read-only permissions and receive their own credentials from the administrator.
+func (a *API) CreateUser(w http.ResponseWriter, r *http.Request) {
+	req, ok := validateAccountRequest(w, r)
+	if !ok {
+		a.writeError(w, http.StatusBadRequest, "Укажите имя, корректную почту и пароль длиной от 8 до 72 символов")
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "Не удалось создать пароль")
+		return
+	}
+	result, err := a.DB.Exec(
+		"INSERT INTO accounts(name,email,password_hash,role,created_at) VALUES(?,?,?,?,?)",
+		req.Name, req.Email, string(hash), string(contract.RoleViewer), time.Now().UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") || strings.Contains(strings.ToLower(err.Error()), "constraint") {
+			a.writeError(w, http.StatusConflict, "Аккаунт с такой почтой уже существует")
+			return
+		}
+		a.writeError(w, http.StatusInternalServerError, "Не удалось создать пользователя")
+		return
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "Пользователь создан, но не удалось прочитать его идентификатор")
+		return
+	}
+	a.bumpRev()
+	a.sendJSON(w, http.StatusCreated, contract.User{
+		ID: strconv.FormatInt(id, 10),
+		Name: req.Name,
+		Email: req.Email,
+		Role: contract.RoleViewer,
+	})
 }
 
 func (a *API) Login(w http.ResponseWriter, r *http.Request) {
@@ -285,6 +341,8 @@ func (a *API) createSession(userID int64, user contract.User) (contract.Session,
 	if err != nil {
 		return contract.Session{}, err
 	}
+	// Keep the session table compact without touching active sessions.
+	_, _ = a.DB.Exec("DELETE FROM auth_sessions WHERE revoked <> 0 OR expires_at <= ?", now.Format(time.RFC3339Nano))
 	if _, err := a.DB.Exec(
 		"INSERT INTO auth_sessions(jti,user_id,expires_at,revoked) VALUES(?,?,?,0)",
 		jti, userID, expires.Format(time.RFC3339Nano),
