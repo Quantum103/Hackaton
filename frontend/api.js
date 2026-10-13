@@ -4,8 +4,8 @@
  * это обычные fetch-запросы к бэкенду. Формат запросов и ответов описан в API.md
  * и contract.go в папке backend-contract: бэкенд реализует именно его.
  *
- * Для работы без сервера есть браузерная заглушка (mock-api.js): ?mock=1 включает её,
- * ?mock=0 выключает. По умолчанию она выключена.
+ * Клиент всегда обращается к реальному backend. Проверки сессии и прав выполняет сервер;
+ * здесь токен лишь прикладывается к API-запросам.
  */
 const API = (() => {
   const CONFIG = {
@@ -16,7 +16,6 @@ const API = (() => {
 
   const TOKEN_KEY = 'stoplist.token'
   const USER_KEY = 'stoplist.user'
-  const MOCK_KEY = 'stoplist.mock'
 
   class ApiError extends Error {
     constructor(status, message, data) {
@@ -27,28 +26,14 @@ const API = (() => {
     }
   }
 
-  /* ---------- Режим заглушки ---------- */
-
-  const mockParam = new URLSearchParams(location.search).get('mock')
-  if (mockParam === '1') localStorage.setItem(MOCK_KEY, '1')
-  if (mockParam === '0') localStorage.removeItem(MOCK_KEY)
-  // Аккаунт заглушки и аккаунт сервера — разные: при переключении режима сессия сбрасывается.
-  if (mockParam === '1' || mockParam === '0') {
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
-    const url = new URL(location.href)
-    url.searchParams.delete('mock')
-    history.replaceState(null, '', url)
-  }
-  const mock = localStorage.getItem(MOCK_KEY) === '1'
-
   /* ---------- Сессия ---------- */
 
   const getToken = () => localStorage.getItem(TOKEN_KEY)
 
+  // Cached user data is display-only. The backend decides whether its token/session is valid.
   function getUser() {
     try {
-      return getToken() ? JSON.parse(localStorage.getItem(USER_KEY)) : null
+      return JSON.parse(localStorage.getItem(USER_KEY)) || null
     } catch {
       return null
     }
@@ -114,25 +99,18 @@ const API = (() => {
 
   /* ---------- Публичный интерфейс ---------- */
 
-  let backend = { request: remote, now: serverNow, rev: () => lastRev }
-
   return {
     ApiError,
-    mock,
-    // Заглушка подменяет сервер целиком: запросы, часы и ревизию.
-    useBackend: (replacement) => {
-      backend = replacement
-    },
-    get: (path) => backend.request('GET', path),
-    post: (path, body) => backend.request('POST', path, body),
-    del: (path) => backend.request('DELETE', path),
+    get: (path) => remote('GET', path),
+    post: (path, body) => remote('POST', path, body),
+    del: (path) => remote('DELETE', path),
     getUser,
     setSession,
     updateUser: (user) => localStorage.setItem(USER_KEY, JSON.stringify(user)),
     clearSession,
     // Текущее время сервера — им пользуются все подписи «через N ч».
-    now: () => backend.now(),
+    now: () => serverNow(),
     // Ревизия данных после последнего собственного запроса.
-    rev: () => backend.rev(),
+    rev: () => lastRev,
   }
 })()

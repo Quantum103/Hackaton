@@ -811,7 +811,6 @@
 </button>
 
 <script src="api.js"></script>
-<script src="mock-api.js"></script>
 <script src="shared.js"></script>
 <script>
 // ===== ДАННЫЕ С СЕРВЕРА =====
@@ -1032,15 +1031,32 @@ function handleRightClick() {
 
 // ===== ЗАГРУЗКА ДАННЫХ С СЕРВЕРА =====
 // Дашборд собирается из тех же запросов, что и остальные страницы: склад, меню, горячие предложения.
+function showDashboardApiError(message) {
+  let node = document.getElementById('apiStatus');
+  if (!node) {
+    node = document.createElement('div');
+    node.id = 'apiStatus';
+    node.style.cssText = 'margin:16px auto;padding:14px 18px;max-width:900px;border:1px solid rgba(255,255,255,.24);border-radius:10px;color:#eee;background:rgba(255,255,255,.06);font-size:13px;line-height:1.5';
+    const nav = document.getElementById('mainNav');
+    if (nav && nav.parentNode) nav.parentNode.insertBefore(node, nav.nextSibling);
+    else document.body.prepend(node);
+  }
+  node.textContent = 'Данные не загружены с сервера: ' + message + '. Войдите через API или проверьте соединение.';
+}
+function hideDashboardApiError() {
+  const node = document.getElementById('apiStatus');
+  if (node) node.remove();
+}
+
 async function loadServerData() {
-  if (!API.getUser()) return; // гостю дашборд показывается пустым
   let stock, menu, hot;
   try {
     [stock, menu, hot] = await Promise.all([API.get('/stock'), API.get('/menu'), API.get('/hot-offers')]);
   } catch (error) {
-    if (error.status === 401) API.clearSession();
+    showDashboardApiError(error.message || 'Не удалось загрузить данные API');
     return;
   }
+  hideDashboardApiError();
 
   const share = (part) => (stock.length ? Math.round((part / stock.length) * 100) : 0);
   const hoursLeft = (item) => Math.max(0, Math.round((new Date(item.nearestExpiresAt).getTime() - API.now()) / 3600000));
@@ -1072,26 +1088,18 @@ async function loadServerData() {
   renderHero();
 }
 
-// ===== ВХОД / ВЫХОД =====
-// Кнопка в шапке: гостю — «Войти», вошедшему — «Выйти».
+// Ссылка на форму входа — сервер сам определяет состояние сессии.
 function renderAuthButton() {
   const anchor = document.querySelector('.nav-dashboard-btn');
-  if (!anchor) return;
-  const user = API.getUser();
+  if (!anchor || document.getElementById('navLoginButton')) return;
   const button = document.createElement('button');
+  button.id = 'navLoginButton';
   button.className = 'nav-dashboard-btn';
   button.style.marginLeft = '8px';
-  button.textContent = user ? 'Выйти' : 'Войти';
-  button.title = user ? user.name + ' · ' + user.email : '';
+  button.textContent = 'Войти';
   button.onclick = (event) => {
     event.stopPropagation();
-    if (!user) {
-      window.location.href = 'login.html';
-      return;
-    }
-    API.post('/auth/logout').catch(() => {});
-    API.clearSession();
-    window.location.href = 'index.html';
+    window.location.href = 'login.html';
   };
   anchor.after(button);
 }

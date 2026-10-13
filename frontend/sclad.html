@@ -403,7 +403,6 @@
 </div>
 
 <script src="api.js"></script>
-<script src="mock-api.js"></script>
 <script src="shared.js"></script>
 <script>
 // ===== ДАННЫЕ С СЕРВЕРА =====
@@ -519,10 +518,9 @@ async function loadServerData() {
   try {
     [stock, batches] = await Promise.all([API.get('/stock'), API.get('/expiry')]);
   } catch (error) {
-    if (error.status === 401) {
-      API.clearSession();
-      window.location.replace('login.html?next=stock');
-    }
+    const body = document.getElementById('warehouseBody');
+    if (body) body.innerHTML = '<tr><td colspan="6" style="padding:48px 12px;text-align:center;color:var(--text-muted)">' +
+      UI.escapeHtml(error.message || 'Не удалось загрузить данные склада') + '</td></tr>';
     return;
   }
 
@@ -566,36 +564,23 @@ async function loadServerData() {
   }
 }
 
-// ===== ВХОД / ВЫХОД =====
-// Кнопка в шапке: гостю — «Войти», вошедшему — «Выйти».
+// Переход к форме входа не зависит от клиентского состояния сессии.
 function renderAuthButton() {
   const anchor = document.querySelector('.nav-dashboard-btn');
-  if (!anchor) return;
-  const user = API.getUser();
+  if (!anchor || document.getElementById('navLoginButton')) return;
   const button = document.createElement('button');
+  button.id = 'navLoginButton';
   button.className = 'nav-dashboard-btn';
   button.style.marginLeft = '8px';
-  button.textContent = user ? 'Выйти' : 'Войти';
-  button.title = user ? user.name + ' · ' + user.email : '';
+  button.textContent = 'Войти';
   button.onclick = (event) => {
     event.stopPropagation();
-    if (!user) {
-      window.location.href = 'login.html';
-      return;
-    }
-    API.post('/auth/logout').catch(() => {});
-    API.clearSession();
-    window.location.href = 'index.html';
+    window.location.href = 'login.html';
   };
   anchor.after(button);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Склад доступен только после входа.
-  if (!API.getUser()) {
-    window.location.replace('login.html?next=stock');
-    return;
-  }
   renderWarehouse();
   renderAuthButton();
   loadServerData();

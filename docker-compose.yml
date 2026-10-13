@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build:
@@ -7,12 +5,14 @@ services:
       dockerfile: Dockerfile
     container_name: hackaton-backend
     environment:
-      - SQLITE_DB_PATH=/root/data/app.db
-      - PORT=8080
+      SQLITE_DB_PATH: /root/data/app.db
+      PORT: "8080"
+      JWT_SECRET: ${JWT_SECRET:-local-development-only-change-this-secret}
     volumes:
       - db_data:/root/data
     networks:
       - app-network
+    restart: unless-stopped
 
   frontend:
     build:
@@ -25,6 +25,7 @@ services:
       - backend
     networks:
       - app-network
+    restart: unless-stopped
 
 volumes:
   db_data:
