@@ -122,9 +122,9 @@
       `<span class="nav-user" title="${escapeHtml(user?.email || '')}">${escapeHtml(user?.name || 'Сессия определяется сервером')}</span>
        <a class="btn btn-line btn-sm${current === 'admin' ? ' active' : ''}" href="#/admin">Администрирование</a>
        <span class="label tag clock-chip" id="clockChip" hidden></span>
-       <a class="btn btn-solid btn-sm" href="login.html">Войти</a>
+       <a class="btn btn-solid btn-sm" href="login.html"${user ? ' hidden' : ''}>Войти</a>
        <button type="button" class="btn btn-line btn-sm" data-logout>Выйти</button>`
-    menu.innerHTML = links + '<div class="divider"></div><a href="#/admin">Администрирование</a><a href="login.html">Войти</a><a href="index.html" data-logout>Завершить сессию</a>'
+    menu.innerHTML = links + '<div class="divider"></div><a href="#/admin">Администрирование</a>' + (user ? '' : '<a href="login.html">Войти</a>') + '<a href="index.html" data-logout>Завершить сессию</a>'
   }
 
   function setMenu(open) {
