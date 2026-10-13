@@ -83,19 +83,11 @@
     button.classList.replace('btn-danger', 'btn-line')
   }
 
-  // Запрос с общей обработкой: при потере сессии отправляем на вход.
+  // Ответы 401/403 обрабатываются экраном; API не меняет маршрут пользователя.
   async function call(promise) {
-    try {
-      const result = await promise
-      seenRev = API.rev()
-      return result
-    } catch (error) {
-      if (error.status === 401 && API.getUser()) {
-        API.clearSession()
-        location.href = 'login.html'
-      }
-      throw error
-    }
+    const result = await promise
+    seenRev = API.rev()
+    return result
   }
 
   /* ---------- Навигация ---------- */
@@ -126,13 +118,13 @@
     const user = API.getUser()
     const links = NAV.map(([path, label, page]) => `<a href="${page || '#/' + path}"${path === current ? ' class="active"' : ''}>${label}</a>`).join('')
     document.getElementById('navLinks').innerHTML = links
-    document.getElementById('navActions').innerHTML = user
-      ? `<span class="nav-user" title="${escapeHtml(user.email)}">${escapeHtml(user.name)}</span>${isAdmin() ? `<a class="btn btn-line btn-sm${current === 'admin' ? ' active' : ''}" href="#/admin">Админ</a>` : ''}<span class="label tag clock-chip" id="clockChip" hidden></span><button type="button" class="btn btn-line btn-sm" data-logout>Выйти</button>`
-      : `<a class="btn btn-solid btn-sm" href="login.html">Войти</a>`
-    menu.innerHTML =
-      links +
-      '<div class="divider"></div>' +
-      (user ? `${isAdmin() ? '<a href="#/admin">Администрирование</a>' : ''}<a href="index.html" data-logout>Выйти (${escapeHtml(user.name)})</a>` : '<a href="login.html">Войти</a><a href="#/register">Регистрация</a>')
+    document.getElementById('navActions').innerHTML =
+      `<span class="nav-user" title="${escapeHtml(user?.email || '')}">${escapeHtml(user?.name || 'Сессия определяется сервером')}</span>
+       <a class="btn btn-line btn-sm${current === 'admin' ? ' active' : ''}" href="#/admin">Администрирование</a>
+       <span class="label tag clock-chip" id="clockChip" hidden></span>
+       <a class="btn btn-solid btn-sm" href="login.html">Войти</a>
+       <button type="button" class="btn btn-line btn-sm" data-logout>Выйти</button>`
+    menu.innerHTML = links + '<div class="divider"></div><a href="#/admin">Администрирование</a><a href="login.html">Войти</a><a href="index.html" data-logout>Завершить сессию</a>'
   }
 
   function setMenu(open) {
@@ -691,7 +683,7 @@
 
   async function simTick() {
     const mode = SIM_MODES[sim.mode]
-    if (!mode || !isAdmin()) return stopSim()
+    if (!mode) return stopSim()
     sim.ticks += 1
     try {
       const menu = await API.get('/menu')
@@ -852,7 +844,6 @@
   // сработал генератор, поработал другой администратор) — тихо обновляем открытый экран.
   // С настоящим бэкендом вместо опроса сюда подключается поток событий (SSE).
   async function pulse() {
-    if (!API.getUser()) return
     try {
       const state = await API.get('/pulse')
       const chip = document.getElementById('clockChip')
@@ -896,35 +887,15 @@
     const [rawPath, rawQuery] = location.hash.replace(/^#\/?/, '').split('?')
     const path = rawPath.replace(/\/$/, '')
     const query = new URLSearchParams(rawQuery || '')
-    const user = API.getUser()
 
     // Главная и вход — отдельные страницы.
     if (path === '') {
       location.replace('index.html')
       return
     }
-    if (path === 'login' && !user) {
-      location.replace('login.html' + (rawQuery ? '?' + rawQuery : ''))
-      return
-    }
-
     // Экран переехал в отдельный файл — отправляем туда, сохранив параметры.
     if (PAGES[path]) {
       location.replace(PAGES[path] + (rawQuery ? '?' + rawQuery : ''))
-      return
-    }
-
-    // Рабочие экраны доступны только после входа; вошедшему незачем видеть форму входа.
-    if (!PUBLIC.includes(path) && !user) {
-      location.replace('login.html?next=' + encodeURIComponent(path))
-      return
-    }
-    if ((path === 'login' || path === 'register') && user) {
-      location.replace('sclad.html')
-      return
-    }
-    if (path === 'admin' && !isAdmin()) {
-      location.replace('sclad.html')
       return
     }
 
@@ -932,7 +903,7 @@
     cleanup = null
     refreshView = null
     setMenu(false)
-    app.className = (PUBLIC.includes(path) ? 'app is-home' : 'app') + (user && !isAdmin() ? ' is-viewer' : '')
+    app.className = PUBLIC.includes(path) ? 'app is-home' : 'app'
     renderNav(path)
     window.scrollTo(0, 0)
 
@@ -950,27 +921,6 @@
     pulse()
   }
 
-  // Роль могли изменить, пока пользователь работал: сверяем её с сервером
-  // при каждом переходе и перерисовываем экран, если она стала другой.
-  async function refreshUser() {
-    const cached = API.getUser()
-    if (!cached) return
-    try {
-      const fresh = await API.get('/auth/me')
-      if (fresh.role === cached.role && fresh.name === cached.name) return
-      API.updateUser(fresh)
-      route()
-    } catch (error) {
-      if (error.status !== 401) return
-      API.clearSession()
-      route()
-    }
-  }
-
-  window.addEventListener('hashchange', () => {
-    route()
-    refreshUser()
-  })
+  window.addEventListener('hashchange', route)
   route()
-  refreshUser()
 })()
