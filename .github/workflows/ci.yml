@@ -132,4 +132,6 @@ jobs:
             http://localhost/api/orders
 
           curl --fail --silent -X POST -H "Authorization: Bearer $TOKEN" http://localhost/api/auth/logout
+          REVOKED_STATUS=$(curl --silent -o /tmp/revoked.json -w '%{http_code}' -H "Authorization: Bearer $TOKEN" http://localhost/api/products)
+          test "$REVOKED_STATUS" = "401"
 
