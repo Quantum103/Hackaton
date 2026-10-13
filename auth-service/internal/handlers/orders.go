@@ -3,6 +3,7 @@ package handlers
 import (
 	"auth-service/internal/contract"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
