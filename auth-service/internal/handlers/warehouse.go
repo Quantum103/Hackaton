@@ -232,6 +232,22 @@ func (a *API) Products(w http.ResponseWriter, r *http.Request) {
 		a.writeError(w, http.StatusInternalServerError, "Не удалось прочитать продукты")
 		return
 	}
+	if err := rows.Close(); err != nil {
+		a.writeError(w, http.StatusInternalServerError, "Не удалось закрыть каталог продуктов")
+		return
+	}
+	now, _ := a.nowAndSpeed()
+	availableByProduct, err := a.availableStockByProduct(now)
+	if err != nil {
+		a.writeError(w, http.StatusInternalServerError, "Не удалось рассчитать остатки склада")
+		return
+	}
+	for i := range products {
+		productID, parseErr := strconv.ParseInt(products[i].ID, 10, 64)
+		if parseErr == nil {
+			products[i].Available = availableByProduct[productID]
+		}
+	}
 	a.sendJSON(w, http.StatusOK, products)
 }
 
