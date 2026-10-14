@@ -28,12 +28,16 @@ type requestCatalogProduct struct {
 	Unit             string
 	BasePriceKopecks int64
 	PriceConfigured  bool
+	Available        int64
 }
 
 type requestPreviewItem struct {
 	OriginalName        string  `json:"originalName"`
 	ProductName         string  `json:"productName"`
 	ProductID           string  `json:"productId"`
+	CatalogMatch        bool    `json:"catalogMatch"`
+	UnitMismatch        bool    `json:"unitMismatch"`
+	Available           int64   `json:"available"`
 	Quantity            float64 `json:"quantity"`
 	Unit                string  `json:"unit"`
 	UnitPriceKopecks    int64   `json:"unitPriceKopecks"`
@@ -47,6 +51,7 @@ type parsedRequestResponse struct {
 	SourceFilename string               `json:"sourceFilename"`
 	SourceHash     string               `json:"sourceHash"`
 	AIUsed         bool                 `json:"aiUsed"`
+	ParserMode     string               `json:"parserMode"`
 	DuplicateSaved bool                 `json:"duplicateSaved"`
 	Items          []requestPreviewItem `json:"items"`
 	Warnings       []string             `json:"warnings"`
@@ -59,6 +64,7 @@ type requestCatalogDTO struct {
 	Unit             string `json:"unit"`
 	BasePriceKopecks int64  `json:"basePriceKopecks"`
 	PriceConfigured  bool   `json:"priceConfigured"`
+	Available        int64  `json:"available"`
 }
 
 type createRequestInput struct {
@@ -73,6 +79,7 @@ type createRequestItem struct {
 	ProductID           string  `json:"productId"`
 	Quantity            float64 `json:"quantity"`
 	ItemDiscountPercent int     `json:"itemDiscountPercent"`
+	UnitPriceKopecks    *int64  `json:"unitPriceKopecks"`
 }
 
 type savedRequestItem struct {
@@ -105,13 +112,13 @@ func (a *API) requestCatalog() ([]requestCatalogProduct, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	products := make([]requestCatalogProduct, 0)
 	for rows.Next() {
 		var product requestCatalogProduct
 		var price sql.NullInt64
 		if err := rows.Scan(&product.ID, &product.Name, &product.Unit, &price); err != nil {
+			rows.Close()
 			return nil, err
 		}
 		product.PriceConfigured = price.Valid
@@ -121,9 +128,37 @@ func (a *API) requestCatalog() ([]requestCatalogProduct, error) {
 		products = append(products, product)
 	}
 	if err := rows.Err(); err != nil {
+		rows.Close()
 		return nil, err
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	now, _ := a.nowAndSpeed()
+	availableByProduct, err := a.availableStockByProduct(now)
+	if err != nil {
+		return nil, err
+	}
+	for i := range products {
+		products[i].Available = availableByProduct[products[i].ID]
+	}
 	return products, nil
+}
+
+// availableStockByProduct counts only non-expired remaining stock in the app's current clock.
+func (a *API) availableStockByProduct(now time.Time) (map[int64]int64, error) {
+	batches, err := a.loadBatchRows("")
+	if err != nil {
+		return nil, err
+	}
+	available := make(map[int64]int64)
+	for _, batch := range batches {
+		if batch.QtyRemaining > 0 && now.Before(batch.ExpiresAt) {
+			available[batch.ProductID] += batch.QtyRemaining
+		}
+	}
+	return available, nil
 }
 
 func catalogDTO(products []requestCatalogProduct) []requestCatalogDTO {
@@ -131,7 +166,7 @@ func catalogDTO(products []requestCatalogProduct) []requestCatalogDTO {
 	for _, product := range products {
 		result = append(result, requestCatalogDTO{
 			ID: strconv.FormatInt(product.ID, 10), Name: product.Name, Unit: product.Unit,
-			BasePriceKopecks: product.BasePriceKopecks, PriceConfigured: product.PriceConfigured,
+			BasePriceKopecks: product.BasePriceKopecks, PriceConfigured: product.PriceConfigured, Available: product.Available,
 		})
 	}
 	return result
