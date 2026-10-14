@@ -39,7 +39,7 @@ func Init(dbPath string) (*sql.DB, error) {
 		"expires_at TEXT NOT NULL, revoked INTEGER NOT NULL DEFAULT 0);" +
 		"CREATE TABLE IF NOT EXISTS products (" +
 		"id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, norm_name TEXT NOT NULL UNIQUE, " +
-		"unit TEXT NOT NULL CHECK(unit IN ('g','ml','pcs')));" +
+		"unit TEXT NOT NULL CHECK(unit IN ('g','ml','pcs')), base_price_kopecks INTEGER NULL);" +
 		"CREATE TABLE IF NOT EXISTS supplies (" +
 		"id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL);" +
 		"CREATE TABLE IF NOT EXISTS batches (" +
@@ -67,6 +67,20 @@ func Init(dbPath string) (*sql.DB, error) {
 		"supply_number TEXT NOT NULL, expires_at TEXT NOT NULL, quantity INTEGER NOT NULL);" +
 		"CREATE TABLE IF NOT EXISTS alerts (" +
 		"id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, level TEXT NOT NULL, text TEXT NOT NULL);" +
+		"CREATE TABLE IF NOT EXISTS customer_requests (" +
+		"id INTEGER PRIMARY KEY AUTOINCREMENT, request_number TEXT NOT NULL UNIQUE, customer_name TEXT NOT NULL, " +
+		"source_filename TEXT NOT NULL DEFAULT '', source_sha256 TEXT NOT NULL DEFAULT '', " +
+		"global_discount_percent INTEGER NOT NULL CHECK(global_discount_percent BETWEEN 0 AND 100), " +
+		"subtotal_kopecks INTEGER NOT NULL DEFAULT 0, total_kopecks INTEGER NOT NULL DEFAULT 0, " +
+		"created_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'saved');" +
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_requests_source_hash ON customer_requests(source_sha256) WHERE source_sha256 <> '';" +
+		"CREATE TABLE IF NOT EXISTS customer_request_items (" +
+		"id INTEGER PRIMARY KEY AUTOINCREMENT, request_id INTEGER NOT NULL REFERENCES customer_requests(id) ON DELETE CASCADE, " +
+		"product_id INTEGER NOT NULL REFERENCES products(id), product_name TEXT NOT NULL, unit TEXT NOT NULL, " +
+		"quantity REAL NOT NULL CHECK(quantity > 0), unit_price_kopecks INTEGER NOT NULL CHECK(unit_price_kopecks >= 0), " +
+		"item_discount_percent INTEGER NOT NULL CHECK(item_discount_percent BETWEEN 0 AND 100), " +
+		"subtotal_kopecks INTEGER NOT NULL, total_kopecks INTEGER NOT NULL);" +
+		"CREATE INDEX IF NOT EXISTS idx_customer_request_items_request ON customer_request_items(request_id, id);" +
 		"CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);" +
 		"CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at DESC);" +
 		"CREATE INDEX IF NOT EXISTS idx_alerts_at ON alerts(at DESC);"
@@ -74,6 +88,12 @@ func Init(dbPath string) (*sql.DB, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("create sqlite schema: %w", err)
+	}
+
+	// Existing SQLite databases need this additive migration as products previously had no price.
+	if err := ensureColumn(db, "products", "base_price_kopecks", "INTEGER NULL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate product catalogue price: %w", err)
 	}
 
 	// Migrate administrator records created by the older application.
@@ -100,4 +120,35 @@ func Init(dbPath string) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+func ensureColumn(db *sql.DB, table, column, definition string) error {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, primaryKey int
+		var defaultValue interface{}
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == column {
+			found = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if found {
+		return nil
+	}
+	_, err = db.Exec("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition)
+	return err
 }
