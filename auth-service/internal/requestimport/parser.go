@@ -16,7 +16,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -79,7 +78,7 @@ func Extract(filename string, data []byte) (Source, error) {
 	ext := strings.ToLower(filepath.Ext(filename))
 	switch ext {
 	case ".txt", ".csv", ".tsv", ".md", ".log", ".json", ".xml":
-		text := strings.TrimPrefix(string(bytes.TrimSpace(data)), "﻿")
+		text := strings.TrimPrefix(string(bytes.TrimSpace(data)), string([]byte{239, 187, 191}))
 		if strings.TrimSpace(text) == "" {
 			return Source{}, errors.New("В файле нет текста")
 		}
@@ -150,14 +149,9 @@ func Analyze(ctx context.Context, source Source, baseURL, model string) (Documen
 		if len(runes) > 50000 {
 			text = string(runes[:50000])
 		}
-		userText += "
-
-Содержимое документа:
-" + text
+		userText += string([]byte{10, 10}) + "Содержимое документа:" + string([]byte{10}) + text
 	} else {
-		userText += "
-
-Извлеки позиции и заказчика с изображения документа."
+		userText += string([]byte{10, 10}) + "Извлеки позиции и заказчика с изображения документа."
 	}
 
 	msg := ollamaMessage{Role: "user", Content: userText}
@@ -242,11 +236,8 @@ func Analyze(ctx context.Context, source Source, baseURL, model string) (Documen
 // Fallback provides best-effort parsing when Ollama is not installed or unavailable.
 func Fallback(text string) Document {
 	result := Document{Items: make([]Item, 0), Notes: make([]string, 0)}
-	lines := strings.Split(strings.ReplaceAll(text, "
-", "
-"), "
-")
-	for _, line := range lines {
+	text = strings.ReplaceAll(text, string([]byte{13, 10}), string([]byte{10}))
+	for _, line := range strings.Split(text, string([]byte{10})) {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -257,47 +248,45 @@ func Fallback(text string) Document {
 			if looksLikeHeader(name) {
 				continue
 			}
-			var quantity float64
-			unit := ""
-			quantityIndex := -1
 			for i := 1; i < len(fields); i++ {
 				q, ok := parseQuantity(fields[i])
-				if ok && q > 0 {
-					quantity, quantityIndex = q, i
-					if i+1 < len(fields) {
-						unit = NormalizeUnit(fields[i+1])
-					}
-					break
+				if !ok || q <= 0 {
+					continue
 				}
+				unit := ""
+				if i+1 < len(fields) {
+					unit = NormalizeUnit(fields[i+1])
+				}
+				result.Items = append(result.Items, Item{ProductName: name, Quantity: q, Unit: unit, Confidence: 0.25})
+				break
 			}
-			if name != "" && quantityIndex >= 0 {
-				result.Items = append(result.Items, Item{ProductName: name, Quantity: quantity, Unit: unit, Confidence: 0.25})
+			continue
+		}
+		tokens := strings.Fields(line)
+		for i, token := range tokens {
+			q, ok := parseQuantity(token)
+			if !ok || q <= 0 {
 				continue
 			}
-		}
-		matches := fallbackLineRE.FindStringSubmatch(line)
-		if len(matches) >= 3 {
-			name := strings.TrimSpace(matches[1])
-			if !looksLikeHeader(name) && name != "" {
-				q, _ := strconv.ParseFloat(strings.ReplaceAll(matches[2], ",", "."), 64)
-				unit := ""
-				if len(matches) > 3 {
-					unit = NormalizeUnit(matches[3])
-				}
-				if q > 0 && q <= 1e9 {
-					result.Items = append(result.Items, Item{ProductName: name, Quantity: q, Unit: unit, Confidence: 0.2})
-				}
+			name := strings.TrimSpace(strings.Join(tokens[:i], " "))
+			if name == "" || looksLikeHeader(name) {
+				break
 			}
+			unit := ""
+			if i+1 < len(tokens) {
+				unit = NormalizeUnit(tokens[i+1])
+			}
+			result.Items = append(result.Items, Item{ProductName: name, Quantity: q, Unit: unit, Confidence: 0.2})
+			break
 		}
 	}
 	return result
 }
 
-var fallbackLineRE = regexp.MustCompile(`(?i)^(.+?)s+([0-9]+(?:[.,][0-9]+)?)s*(кг|килограмм(?:а|ов)?|г|гр|л|литр(?:а|ов)?|мл|мл.|шт.?|штук(?:а|и)?|pcs|ед.?)?(?:s|$)`)
-
 func splitLine(line string) []string {
-	if strings.Contains(line, "	") {
-		return strings.Split(line, "	")
+	tab := string([]byte{9})
+	if strings.Contains(line, tab) {
+		return strings.Split(line, tab)
 	}
 	if strings.Contains(line, "|") {
 		return strings.Split(line, "|")
@@ -314,15 +303,28 @@ func splitLine(line string) []string {
 }
 
 func parseQuantity(value string) (float64, bool) {
-	match := quantityOnlyRE.FindStringSubmatch(strings.TrimSpace(value))
-	if len(match) < 2 {
+	cleaned := strings.ToLower(strings.TrimSpace(value))
+	cleaned = strings.Trim(cleaned, " .,:;")
+	units := []string{
+		"килограммов", "килограмма", "килограмм", "кг", "kg",
+		"граммов", "грамма", "грамм", "grams", "gram", "гр", "г",
+		"миллилитров", "миллилитра", "миллилитр", "мл", "ml",
+		"литров", "литра", "литр", "л", "liter", "litre",
+		"штук", "штуки", "штука", "pcs", "piece", "pieces", "шт", "ед",
+	}
+	for _, unit := range units {
+		if strings.HasSuffix(cleaned, unit) {
+			cleaned = strings.TrimSpace(strings.TrimSuffix(cleaned, unit))
+			break
+		}
+	}
+	cleaned = strings.TrimSpace(cleaned)
+	if cleaned == "" {
 		return 0, false
 	}
-	number, err := strconv.ParseFloat(strings.ReplaceAll(match[1], ",", "."), 64)
+	number, err := strconv.ParseFloat(strings.ReplaceAll(cleaned, ",", "."), 64)
 	return number, err == nil
 }
-
-var quantityOnlyRE = regexp.MustCompile(`(?i)^s*([0-9]+(?:[.,][0-9]+)?)s*(?:кг|килограмм(?:а|ов)?|г|гр|л|литр(?:а|ов)?|мл|шт.?|штук(?:а|и)?|pcs|ед.?)?s*$`)
 
 func looksLikeHeader(value string) bool {
 	v := normalizeName(value)
@@ -466,9 +468,8 @@ func extractXLSX(data []byte) (string, error) {
 				parts[col] = strings.TrimSpace(values[col])
 			}
 			if strings.TrimSpace(strings.Join(parts, "")) != "" {
-				output.WriteString(strings.Join(parts, "	"))
-				output.WriteByte('
-')
+				output.WriteString(strings.Join(parts, string([]byte{9})))
+				output.WriteByte(10)
 			}
 		}
 	}
@@ -541,15 +542,13 @@ func extractDOCX(data []byte) (string, error) {
 					}
 					output.WriteString(value)
 				case "tab":
-					output.WriteByte('	')
+					output.WriteByte(9)
 				case "br":
-					output.WriteByte('
-')
+					output.WriteByte(10)
 				}
 			case xml.EndElement:
 				if item.Name.Local == "p" {
-					output.WriteByte('
-')
+					output.WriteByte(10)
 				}
 			}
 		}
@@ -576,8 +575,7 @@ func extractPDF(data []byte) (string, error) {
 		}
 		header := string(data[headerStart:startWord])
 		streamStart := startWord + len("stream")
-		for streamStart < len(data) && (data[streamStart] == '' || data[streamStart] == '
-' || data[streamStart] == ' ') {
+		for streamStart < len(data) && (data[streamStart] == 10 || data[streamStart] == 13 || data[streamStart] == 32) {
 			streamStart++
 		}
 		endRel := bytes.Index(data[streamStart:], []byte("endstream"))
@@ -585,21 +583,18 @@ func extractPDF(data []byte) (string, error) {
 			break
 		}
 		end := streamStart + endRel
-		raw := bytes.TrimRight(data[streamStart:end], "
-")
+		raw := bytes.TrimRight(data[streamStart:end], string([]byte{10, 13}))
 		stream := raw
 		if strings.Contains(header, "FlateDecode") {
-			if reader := flate.NewReader(bytes.NewReader(raw)); reader != nil {
-				uncompressed, err := io.ReadAll(io.LimitReader(reader, maxExpandedFileSize+1))
-				_ = reader.Close()
-				if err == nil && len(uncompressed) <= maxExpandedFileSize {
-					stream = uncompressed
-				}
+			reader := flate.NewReader(bytes.NewReader(raw))
+			uncompressed, readErr := io.ReadAll(io.LimitReader(reader, maxExpandedFileSize+1))
+			_ = reader.Close()
+			if readErr == nil && len(uncompressed) <= maxExpandedFileSize {
+				stream = uncompressed
 			}
 		}
 		decoded.WriteString(extractPDFLiterals(string(stream)))
-		decoded.WriteByte('
-')
+		decoded.WriteByte(10)
 		offset = end + len("endstream")
 	}
 	text := strings.TrimSpace(decoded.String())
@@ -620,30 +615,27 @@ func extractPDFLiterals(input string) string {
 		raw := make([]byte, 0, 64)
 		for i < len(input) && depth > 0 {
 			c := input[i]
-			if c == '\' {
+			if c == 92 {
 				i++
 				if i >= len(input) {
 					break
 				}
 				switch input[i] {
 				case 'n':
-					raw = append(raw, '
-')
+					raw = append(raw, 10)
 				case 'r':
-					raw = append(raw, '')
+					raw = append(raw, 13)
 				case 't':
-					raw = append(raw, '	')
+					raw = append(raw, 9)
 				case 'b':
-					raw = append(raw, '')
+					raw = append(raw, 8)
 				case 'f':
-					raw = append(raw, '')
-				case '':
-					if i+1 < len(input) && input[i+1] == '
-' {
+					raw = append(raw, 12)
+				case 10:
+				case 13:
+					if i+1 < len(input) && input[i+1] == 10 {
 						i++
 					}
-				case '
-':
 				default:
 					if input[i] >= '0' && input[i] <= '7' {
 						octal := []byte{input[i]}
@@ -675,7 +667,7 @@ func extractPDFLiterals(input string) string {
 		}
 		if len(raw) > 0 {
 			output.WriteString(decodePDFBytes(raw))
-			output.WriteByte(' ')
+			output.WriteByte(32)
 		}
 		i--
 	}
