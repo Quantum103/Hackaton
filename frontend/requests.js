@@ -52,6 +52,13 @@
     return configured ? rawMoney(kopecks) : ''
   }
 
+  function manualPriceKopecks(value) {
+    if (value === null || value === undefined || String(value).trim() === '') return null
+    const parsed = Number(String(value).replace(',', '.'))
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 10000000000) return null
+    return Math.round(parsed * 100)
+  }
+
   function productByID(id) {
     return catalog.find((product) => String(product.id) === String(id)) || null
   }
@@ -184,6 +191,10 @@
         unit: item.unit || '',
         unitPriceKopecks: item.unitPriceKopecks || 0,
         priceConfigured: Boolean(item.priceConfigured),
+        available: Number(item.available || 0),
+        catalogMatch: Boolean(item.catalogMatch),
+        unitMismatch: Boolean(item.unitMismatch),
+        manualPrice: '',
         itemDiscountPercent: Number(item.itemDiscountPercent || 0),
         confidence: Number(item.confidence || 0),
       }))
@@ -191,12 +202,19 @@
       globalDiscountNode.value = '0'
       editor.hidden = false
       renderRows()
+      const parserMode = result.parserMode || (aiUsed ? 'ai' : 'fallback')
       updateAIStatus(
-        aiUsed ? 'Нейросеть обработала документ' : 'Включён упрощённый разбор',
-        aiUsed
+        parserMode === 'ai'
+          ? 'Нейросеть обработала документ'
+          : parserMode === 'structured'
+            ? 'Список распознан по строкам'
+            : 'Включён упрощённый разбор',
+        parserMode === 'ai'
           ? 'Qwen выделила ' + items.length + ' поз. Проверь соответствие товарам и единицы измерения.'
-          : 'Ollama недоступен или вернул ошибку. Таблица составлена эвристически; обязательно проверь распознавание.',
-        !aiUsed
+          : parserMode === 'structured'
+            ? 'Простой текстовый список разобран без ожидания ответа модели. Проверь названия и количество.'
+            : 'Ollama не ответила или не выделила позиции. Использован упрощённый разбор; проверь распознавание.',
+        parserMode === 'fallback'
       )
       const warnings = [...(result.warnings || [])]
       if (duplicateSaved) warnings.unshift('Этот файл уже встречался в сохранённых заявках. Повторное сохранение будет заблокировано.')
@@ -220,16 +238,37 @@
     }
     rowsNode.innerHTML = items.map((item, index) => {
       const product = productByID(item.productId)
-      const labelName = product ? product.name : (item.originalName || item.productName || 'Неизвестный товар')
       const optionList = ['<option value="">Выбери товар…</option>'].concat(catalog.map((option) =>
         '<option value="' + UI.escapeHtml(option.id) + '"' + (String(option.id) === String(item.productId) ? ' selected' : '') + '>' + UI.escapeHtml(option.name) + '</option>'
       )).join('')
-      const priceText = product && product.priceConfigured
-        ? '<span class="request-price" data-unit-price="' + index + '">' + rubles(product.basePriceKopecks) + '</span><span class="request-unit-price-note">за 1 ' + UI.escapeHtml(units[product.unit] || product.unit) + '</span>'
-        : '<span class="request-not-set" data-unit-price="' + index + '">Цена не задана</span>'
-      const sourceNote = item.originalName && product && item.originalName.toLowerCase() !== product.name.toLowerCase()
-        ? '<span class="request-original-name">В документе: ' + UI.escapeHtml(item.originalName) + '</span>'
-        : (!product && item.originalName ? '<span class="request-original-name">Из документа: ' + UI.escapeHtml(item.originalName) + '</span>' : '')
+
+      let priceText = '<span class="request-not-set">Сначала выбери товар из каталога</span>'
+      if (product && product.priceConfigured) {
+        priceText = '<span class="request-price" data-unit-price="' + index + '">' + rubles(product.basePriceKopecks) + '</span><span class="request-unit-price-note">за 1 ' + UI.escapeHtml(units[product.unit] || product.unit) + ' · из БД</span>'
+      } else if (product) {
+        priceText = '<div class="request-manual-price"><input class="input" data-item-price="' + index + '" type="number" min="0" max="10000000000" step="0.01" inputmode="decimal" value="' + UI.escapeHtml(item.manualPrice || '') + '" placeholder="Ввести цену" aria-label="Ручная цена позиции ' + (index + 1) + '" /><span>₽</span></div><span class="request-unit-price-note request-not-set">Цена не задана в БД; цена только для этой заявки</span>'
+      }
+
+      const notes = []
+      if (!product && item.unitMismatch) {
+        notes.push('Товар найден в каталоге, но единица измерения не совпадает. Проверь товар и количество.')
+      } else if (!product && item.originalName && !item.catalogMatch) {
+        notes.push('Товара «' + item.originalName + '» нет в каталоге и на складе. Добавь его через «Поставки» или выбери замену.')
+      } else if (!product) {
+        notes.push('Выбери товар из каталога.')
+      } else {
+        if (item.originalName && item.originalName.toLowerCase() !== product.name.toLowerCase()) {
+          notes.push('В документе: ' + item.originalName)
+        }
+        if (product.available !== undefined && product.available !== null) {
+          if (Number(product.available) <= 0) {
+            notes.push('Товар найден в каталоге, но на складе нет доступного остатка.')
+          } else {
+            notes.push('На складе: ' + number.format(Number(product.available)) + ' ' + (units[product.unit] || product.unit))
+          }
+        }
+      }
+      const sourceNote = notes.map((note) => '<span class="request-original-name">' + UI.escapeHtml(note) + '</span>').join('')
       const quantityUnit = product ? product.unit : (item.unit || '')
       return '<tr data-request-row="' + index + '">' +
         '<td class="request-product-cell"><select class="input" data-product-select="' + index + '" aria-label="Товар позиции ' + (index + 1) + '">' + optionList + '</select>' + sourceNote + '</td>' +
@@ -249,6 +288,7 @@
     let missingMapping = false
     let missingPrice = false
     let invalidQuantity = false
+    let invalidUnit = false
 
     items.forEach((item, index) => {
       const product = productByID(item.productId)
@@ -257,12 +297,12 @@
       const cell = rowsNode.querySelector('[data-row-total="' + index + '"]')
       if (!product) {
         missingMapping = true
-        if (cell) cell.textContent = 'Выбери товар'
+        if (cell) cell.textContent = item.unitMismatch ? 'Проверь единицы' : (item.originalName ? 'Нет в каталоге' : 'Выбери товар')
         return
       }
-      if (!product.priceConfigured) {
-        missingPrice = true
-        if (cell) cell.textContent = 'Нет цены'
+      if (item.unitMismatch) {
+        invalidUnit = true
+        if (cell) cell.textContent = 'Проверь единицы'
         return
       }
       if (!quantity) {
@@ -270,7 +310,17 @@
         if (cell) cell.textContent = 'Укажи количество'
         return
       }
-      const lineSubtotal = Math.round(Number(product.basePriceKopecks || 0) * quantity)
+
+      const unitPriceKopecks = product.priceConfigured
+        ? Number(product.basePriceKopecks || 0)
+        : manualPriceKopecks(item.manualPrice)
+      if (unitPriceKopecks === null) {
+        missingPrice = true
+        if (cell) cell.textContent = 'Введи цену'
+        return
+      }
+
+      const lineSubtotal = Math.round(unitPriceKopecks * quantity)
       const lineTotal = Math.round(lineSubtotal * (1 - lineDiscount / 100) * (1 - globalDiscount / 100))
       subtotal += lineSubtotal
       total += lineTotal
@@ -281,16 +331,18 @@
     el('summaryDiscount').textContent = '−' + rubles(Math.max(0, subtotal - total))
     el('summaryTotal').textContent = rubles(total)
 
-    const canSave = admin && items.length > 0 && !missingMapping && !missingPrice && !invalidQuantity && !duplicateSaved
+    const canSave = admin && items.length > 0 && !missingMapping && !missingPrice && !invalidQuantity && !invalidUnit && !duplicateSaved
     saveButton.disabled = !canSave
     if (!admin) {
       message(saveMessage, 'Сохранять заявки и менять цены может только администратор.', true)
     } else if (duplicateSaved) {
       message(saveMessage, 'Этот исходный файл уже сохранён. Загрузи другой файл или создай заявку вручную.', true)
     } else if (missingMapping) {
-      message(saveMessage, 'Выбери товар из каталога для каждой строки.', true)
+      message(saveMessage, 'Для каждой позиции нужен товар из БД. Если его нет на складе, добавь его через «Поставки» или выбери замену.', true)
     } else if (missingPrice) {
-      message(saveMessage, 'У одного или нескольких товаров не задана цена в каталоге.', true)
+      message(saveMessage, 'Для строки без цены в БД введи цену вручную. Она сохранится только в этой заявке.', true)
+    } else if (invalidUnit) {
+      message(saveMessage, 'Проверь единицы измерения: автоматический пересчёт невозможен.', true)
     } else if (invalidQuantity) {
       message(saveMessage, 'Укажи положительное количество для каждой позиции.', true)
     } else {
@@ -308,28 +360,40 @@
     const product = productByID(productSelect.value)
     if (!product) {
       item.productId = ''
+      item.unitMismatch = false
       renderRows()
       return
     }
     const quantity = quantityValue(item.quantity)
+    let unitMismatch = false
     if (oldUnit) {
       const converted = convertQuantity(quantity, oldUnit, product.unit)
       if (converted !== null) item.quantity = converted
       else if (oldUnit !== product.unit) {
+        unitMismatch = true
         renderWarnings(['У позиции «' + (item.originalName || item.productName) + '» единица из документа отличается от каталога. Проверь количество вручную.'])
       }
     }
     item.productId = String(product.id)
     item.productName = product.name
+    item.catalogMatch = true
+    item.unitMismatch = unitMismatch
+    item.available = Number(product.available || 0)
     item.unit = product.unit
     item.unitPriceKopecks = product.basePriceKopecks || 0
     item.priceConfigured = Boolean(product.priceConfigured)
+    item.manualPrice = ''
     renderRows()
   })
 
   rowsNode.addEventListener('input', (event) => {
     const quantityInput = event.target.closest('[data-quantity]')
     const discountInput = event.target.closest('[data-item-discount]')
+    const priceInput = event.target.closest('[data-item-price]')
+    if (priceInput) {
+      const index = Number(priceInput.dataset.itemPrice)
+      if (items[index]) items[index].manualPrice = priceInput.value
+    }
     if (quantityInput) {
       const index = Number(quantityInput.dataset.quantity)
       if (items[index]) items[index].quantity = quantityInput.value
@@ -338,7 +402,7 @@
       const index = Number(discountInput.dataset.itemDiscount)
       if (items[index]) items[index].itemDiscountPercent = discountValue(discountInput.value)
     }
-    if (quantityInput || discountInput) updateTotals()
+    if (quantityInput || discountInput || priceInput) updateTotals()
   })
 
   rowsNode.addEventListener('click', (event) => {
@@ -351,7 +415,8 @@
   el('addRequestItem').addEventListener('click', () => {
     items.push({
       originalName: '', productName: '', productId: '', quantity: 1, unit: '',
-      unitPriceKopecks: 0, priceConfigured: false, itemDiscountPercent: 0, confidence: 1
+      unitPriceKopecks: 0, priceConfigured: false, available: 0, catalogMatch: false,
+      unitMismatch: false, manualPrice: '', itemDiscountPercent: 0, confidence: 1
     })
     renderRows()
     const last = items.length - 1
@@ -371,11 +436,16 @@
       sourceFilename: currentSourceFilename,
       sourceHash: currentSourceHash,
       globalDiscountPercent: globalDiscount,
-      items: items.map((item) => ({
-        productId: String(item.productId),
-        quantity: quantityValue(item.quantity),
-        itemDiscountPercent: discountValue(item.itemDiscountPercent),
-      })),
+      items: items.map((item) => {
+        const row = {
+          productId: String(item.productId),
+          quantity: quantityValue(item.quantity),
+          itemDiscountPercent: discountValue(item.itemDiscountPercent),
+        }
+        const product = productByID(item.productId)
+        if (product && !product.priceConfigured) row.unitPriceKopecks = manualPriceKopecks(item.manualPrice)
+        return row
+      }),
     }
     saveButton.disabled = true
     saveButton.textContent = 'Сохраняем…'
