@@ -164,3 +164,28 @@
   .request-history-card > summary::after { position:absolute; right:24px; }
   .request-history-card > summary { position:relative; padding-right:42px; }
 }
+
+
+/* Per-request price is intentionally separate from the catalogue's stored price. */
+.request-manual-price {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:120px;
+}
+.request-manual-price input {
+  width:100%;
+  min-width:90px;
+}
+.request-manual-price span {
+  color:var(--ink-faint);
+  font-size:12px;
+  flex:0 0 auto;
+}
+.request-product-cell .request-original-name {
+  max-width:290px;
+  line-height:1.45;
+}
+.request-product-cell .request-original-name:first-child {
+  color:var(--ink-faint);
+}
