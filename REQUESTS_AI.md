@@ -40,7 +40,13 @@ ollama pull qwen3.5:2b
 ollama run qwen3.5:2b
 ~~~~
 
-После проверки можно выйти из интерактивного режима модели. API Ollama по умолчанию работает на порту 11434.
+После проверки можно выйти из интерактивного режима модели. API Ollama по умолчанию работает на порту 11434 и слушает только loopback-адрес. Чтобы backend в Docker мог обратиться к Ollama на Windows, в PowerShell выполни:
+
+~~~~powershell
+[Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0:11434", "User")
+~~~~
+
+Затем полностью заверши Ollama через значок в системном трее (Quit/Выход) и снова запусти из меню «Пуск». Настройка `OLLAMA_HOST` меняет адрес прослушивания; проверь, что брандмауэр Windows не разрешает доступ к порту 11434 из недоверенных сетей. Не настраивай проброс порта на роутере и не открывай Ollama в интернет. Это нужно только для доступа из локального Docker.
 
 3. В корне проекта создай файл .env:
 
@@ -56,7 +62,13 @@ JWT_SECRET=replace-this-with-a-random-secret-at-least-32-characters
 docker compose up --build -d
 ~~~~
 
-В docker-compose.yml уже настроены переменные OLLAMA_URL и OLLAMA_MODEL. Для Linux добавлен адрес host.docker.internal через host-gateway. Если Docker-контейнер не может подключиться к Ollama на Windows, проблема обычно связана с тем, что Ollama слушает только локальный интерфейс или запрос блокируется брандмауэром. Проверь доступность http://localhost:11434/api/tags с хоста и разреши локальное подключение из Docker; не открывай порт Ollama всему интернету.
+В docker-compose.yml backend по умолчанию использует Windows Ollama по адресу `http://host.docker.internal:11434`. Переменные OLLAMA_URL и OLLAMA_MODEL можно переопределить в .env. Для проверки сначала выполни `Invoke-RestMethod http://localhost:11434/api/tags` на Windows, затем проверь доступ из контейнера:
+
+~~~~powershell
+docker compose exec backend sh -c 'echo "$OLLAMA_URL $OLLAMA_MODEL"; wget -qO- "$OLLAMA_URL/api/tags"'
+~~~~
+
+Ответ со списком моделей должен содержать `qwen3.5:2b`. Если команда в контейнере не проходит, проверь `OLLAMA_HOST` и правила брандмауэра Windows. Альтернативный, отдельный Ollama-контейнер включается явно через `docker compose --profile container-ollama up -d`; в этом случае модель потребуется отдельно скачать внутри него.
 
 Локальные модели используют память и CPU/GPU. На ПК с 16 ГБ RAM и GTX 1060 3 ГБ модель 2B — самый осторожный старт, но обработка может быть медленной. Если Ollama не отвечает, модуль не падает: он пытается разобрать табличный текст упрощённым способом и помечает черновик как требующий ручной проверки.
 
