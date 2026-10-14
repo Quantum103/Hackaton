@@ -255,9 +255,9 @@ func (a *API) ParseRequestFile(w http.ResponseWriter, r *http.Request) {
 			// A local model may return syntactically valid JSON but no positions.
 			// In that case, don't silently show an empty draft if rows are readable.
 			candidate := requestimport.Fallback(source.Text)
+			parserMode = "fallback"
 			if len(candidate.Items) > 0 {
 				document = candidate
-				parserMode = "fallback"
 				warnings = append(warnings, "Нейросеть не выделила позиции; строки восстановлены упрощённым разбором. Проверь распознавание.")
 			}
 		}
