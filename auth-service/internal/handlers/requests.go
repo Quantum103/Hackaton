@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"path/filepath"
@@ -22,23 +23,23 @@ import (
 const maxRequestUpload = 12 << 20
 
 type requestCatalogProduct struct {
-	ID                 int64
-	Name               string
-	Unit               string
-	BasePriceKopecks   int64
-	PriceConfigured    bool
+	ID               int64
+	Name             string
+	Unit             string
+	BasePriceKopecks int64
+	PriceConfigured  bool
 }
 
 type requestPreviewItem struct {
-	OriginalName       string  `json:"originalName"`
-	ProductName        string  `json:"productName"`
-	ProductID          string  `json:"productId"`
-	Quantity           float64 `json:"quantity"`
-	Unit               string  `json:"unit"`
-	UnitPriceKopecks   int64   `json:"unitPriceKopecks"`
-	PriceConfigured    bool    `json:"priceConfigured"`
-	ItemDiscountPercent int    `json:"itemDiscountPercent"`
-	Confidence         float64 `json:"confidence"`
+	OriginalName        string  `json:"originalName"`
+	ProductName         string  `json:"productName"`
+	ProductID           string  `json:"productId"`
+	Quantity            float64 `json:"quantity"`
+	Unit                string  `json:"unit"`
+	UnitPriceKopecks    int64   `json:"unitPriceKopecks"`
+	PriceConfigured     bool    `json:"priceConfigured"`
+	ItemDiscountPercent int     `json:"itemDiscountPercent"`
+	Confidence          float64 `json:"confidence"`
 }
 
 type parsedRequestResponse struct {
@@ -70,19 +71,19 @@ type createRequestInput struct {
 
 type createRequestItem struct {
 	ProductID           string  `json:"productId"`
-	Quantity             float64 `json:"quantity"`
+	Quantity            float64 `json:"quantity"`
 	ItemDiscountPercent int     `json:"itemDiscountPercent"`
 }
 
 type savedRequestItem struct {
-	ProductID            string  `json:"productId"`
-	ProductName          string  `json:"productName"`
-	Unit                 string  `json:"unit"`
-	Quantity             float64 `json:"quantity"`
-	UnitPriceKopecks     int64   `json:"unitPriceKopecks"`
-	ItemDiscountPercent  int     `json:"itemDiscountPercent"`
-	SubtotalKopecks      int64   `json:"subtotalKopecks"`
-	TotalKopecks         int64   `json:"totalKopecks"`
+	ProductID           string  `json:"productId"`
+	ProductName         string  `json:"productName"`
+	Unit                string  `json:"unit"`
+	Quantity            float64 `json:"quantity"`
+	UnitPriceKopecks    int64   `json:"unitPriceKopecks"`
+	ItemDiscountPercent int     `json:"itemDiscountPercent"`
+	SubtotalKopecks     int64   `json:"subtotalKopecks"`
+	TotalKopecks        int64   `json:"totalKopecks"`
 }
 
 type savedRequest struct {
@@ -174,15 +175,33 @@ func (a *API) ParseRequestFile(w http.ResponseWriter, r *http.Request) {
 	hashHex := hex.EncodeToString(hash[:])
 
 	baseURL, model := requestimport.OllamaConfig()
+
+	log.Printf(
+		"Импорт накладной: файл=%s, размер=%d байт, текст=%d символов, изображение=%d байт, модель=%s",
+		filename,
+		len(data),
+		len([]rune(source.Text)),
+		len(source.Image),
+		model,
+	)
+
 	ctx, cancel := context.WithTimeout(r.Context(), 48*time.Second)
+	started := time.Now()
 	document, aiErr := requestimport.Analyze(ctx, source, baseURL, model)
+	elapsed := time.Since(started)
 	cancel()
+
+	log.Printf("Анализ Ollama завершён: время=%s, ошибка=%v", elapsed, aiErr)
+
 	aiUsed := aiErr == nil
 	warnings := make([]string, 0)
+
 	if aiErr != nil {
+		log.Printf("Ошибка анализа через Ollama: %v", aiErr)
 		document = requestimport.Fallback(source.Text)
 		warnings = append(warnings, "Нейросеть не ответила — включён упрощённый разбор. Проверь каждую строку вручную.")
 	}
+
 	if len(document.Items) == 0 {
 		warnings = append(warnings, "Не удалось уверенно выделить позиции. Их можно добавить вручную.")
 	}
@@ -199,10 +218,10 @@ func (a *API) ParseRequestFile(w http.ResponseWriter, r *http.Request) {
 	for _, item := range document.Items {
 		row := requestPreviewItem{
 			OriginalName: strings.TrimSpace(item.ProductName),
-			ProductName: strings.TrimSpace(item.ProductName),
-			Quantity: item.Quantity,
-			Unit: requestimport.NormalizeUnit(item.Unit),
-			Confidence: item.Confidence,
+			ProductName:  strings.TrimSpace(item.ProductName),
+			Quantity:     item.Quantity,
+			Unit:         requestimport.NormalizeUnit(item.Unit),
+			Confidence:   item.Confidence,
 		}
 		product, matched := matchRequestProduct(item.ProductName, products)
 		if matched {

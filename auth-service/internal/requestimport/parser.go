@@ -27,8 +27,8 @@ import (
 const maxExpandedFileSize = 24 << 20
 
 type Source struct {
-	Text     string
-	Image    []byte
+	Text      string
+	Image     []byte
 	ImageMIME string
 }
 
@@ -56,7 +56,8 @@ type ollamaRequest struct {
 	Messages []ollamaMessage `json:"messages"`
 	Stream   bool            `json:"stream"`
 	Format   string          `json:"format"`
-	Options  map[string]any  `json:"options,omitempty"`
+	Think    bool            `json:"think"`
+	Options  map[string]any  `json:"options"`
 }
 
 type ollamaResponse struct {
@@ -167,7 +168,11 @@ func Analyze(ctx context.Context, source Source, baseURL, model string) (Documen
 		},
 		Stream: false,
 		Format: "json",
-		Options: map[string]any{"temperature": 0},
+		Think:  false,
+		Options: map[string]any{
+			"temperature": 0,
+			"num_predict": 256,
+		},
 	})
 	if err != nil {
 		return Document{}, err
@@ -417,9 +422,9 @@ func extractXLSX(data []byte) (string, error) {
 		var sheet struct {
 			Rows []struct {
 				Cells []struct {
-					Ref   string `xml:"r,attr"`
-					Type  string `xml:"t,attr"`
-					Value string `xml:"v"`
+					Ref    string `xml:"r,attr"`
+					Type   string `xml:"t,attr"`
+					Value  string `xml:"v"`
 					Inline struct {
 						Text string `xml:"t"`
 						Runs []struct {
