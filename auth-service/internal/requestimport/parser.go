@@ -282,7 +282,7 @@ func Fallback(text string) Document {
 			if !ok || q <= 0 {
 				continue
 			}
-			name := strings.Trim(strings.Join(tokens[segmentStart:i], " "), " \\t,;|:-")
+			name := strings.Trim(strings.Join(tokens[segmentStart:i], " "), " \t,;|:-")
 			if name == "" || looksLikeHeader(name) {
 				segmentStart = i + 1
 				continue
