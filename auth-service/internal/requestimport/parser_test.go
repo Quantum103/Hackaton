@@ -21,6 +21,43 @@ func TestFallbackParsesPipeSeparatedRows(t *testing.T) {
 	}
 }
 
+func TestFallbackPlainTextRows(t *testing.T) {
+	document := Fallback("шашлык 500 грамм\nкимча 200 грамм")
+	if len(document.Items) != 2 {
+		t.Fatalf("expected two items, got %d: %#v", len(document.Items), document.Items)
+	}
+	want := []Item{
+		{ProductName: "шашлык", Quantity: 500, Unit: "g"},
+		{ProductName: "кимча", Quantity: 200, Unit: "g"},
+	}
+	for i := range want {
+		got := document.Items[i]
+		if got.ProductName != want[i].ProductName || got.Quantity != want[i].Quantity || got.Unit != want[i].Unit {
+			t.Fatalf("item %d: got %#v, want %#v", i, got, want[i])
+		}
+	}
+}
+
+func TestFallbackMultipleItemsOnOneLine(t *testing.T) {
+	document := Fallback("шашлык 500 грамм кимча 200 грамм")
+	if len(document.Items) != 2 {
+		t.Fatalf("expected two items, got %d: %#v", len(document.Items), document.Items)
+	}
+	if document.Items[0].ProductName != "шашлык" || document.Items[1].ProductName != "кимча" {
+		t.Fatalf("unexpected item names: %#v", document.Items)
+	}
+}
+
+func TestFallbackCommaSeparatedRows(t *testing.T) {
+	document := Fallback("товар,количество,единица\nшашлык,500,грамм\nкимча,200,грамм")
+	if len(document.Items) != 2 {
+		t.Fatalf("expected two items, got %d: %#v", len(document.Items), document.Items)
+	}
+	if document.Items[0].ProductName != "шашлык" || document.Items[0].Quantity != 500 {
+		t.Fatalf("unexpected first item: %#v", document.Items[0])
+	}
+}
+
 func TestConvertQuantity(t *testing.T) {
 	got, ok := ConvertQuantity(2.5, "kg", "g")
 	if !ok || got != 2500 {
