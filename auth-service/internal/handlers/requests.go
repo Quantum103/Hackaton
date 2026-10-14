@@ -278,7 +278,7 @@ func normalizeRequestName(value string) string {
 }
 
 func safeRequestFilename(filename string) string {
-	filename = strings.ReplaceAll(filename, "\", "/")
+	filename = strings.ReplaceAll(filename, string([]byte{92}), "/")
 	filename = filepath.Base(filename)
 	filename = strings.TrimSpace(filename)
 	if filename == "" || filename == "." {
