@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"auth-service/internal/contract"
 	"auth-service/internal/requestimport"
 	"context"
 	"crypto/sha256"
