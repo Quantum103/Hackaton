@@ -8,12 +8,24 @@ services:
       SQLITE_DB_PATH: /root/data/app.db
       PORT: "8080"
       JWT_SECRET: ${JWT_SECRET:-local-development-only-change-this-secret}
-      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.5:2b}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: qwen3.5:2b
     volumes:
       - db_data:/root/data
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: hackaton-ollama
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: 5m
+    volumes:
+      - ollama_data:/root/.ollama
     networks:
       - app-network
     restart: unless-stopped
@@ -33,6 +45,7 @@ services:
 
 volumes:
   db_data:
+  ollama_data:
 
 networks:
   app-network:
