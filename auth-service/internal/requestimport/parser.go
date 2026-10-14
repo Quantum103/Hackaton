@@ -384,8 +384,15 @@ func parseQuantity(value string) (float64, bool) {
 
 func looksLikeHeader(value string) bool {
 	v := normalizeName(value)
-	for _, word := range []string{"наименование", "продукт", "товар", "product", "название", "позиция", "артикул", "итого", "сумма", "quantity", "количество"} {
-		if v == normalizeName(word) || strings.Contains(v, normalizeName(word)) {
+	// Compare full header labels instead of substring matching: a real item can
+	// legitimately be named "Unknown product" or "Product sauce".
+	for _, header := range []string{
+		"наименование", "наименование товара", "наименование продукта", "товар", "товары",
+		"продукт", "продукты", "product", "product name", "productname", "item", "item name",
+		"название", "название товара", "название продукта", "позиция", "позиции", "артикул",
+		"итого", "сумма", "quantity", "количество", "единица", "unit", "price", "цена",
+	} {
+		if v == normalizeName(header) {
 			return true
 		}
 	}
