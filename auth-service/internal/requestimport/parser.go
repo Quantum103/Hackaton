@@ -340,7 +340,7 @@ func NormalizeUnit(raw string) string {
 	value := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(raw, "ё", "е")))
 	value = strings.Trim(value, ". ,;:")
 	switch value {
-	case "г", "гр", "грамм", "грамма", "граммов", "gram", "grams":
+	case "g", "г", "гр", "грамм", "грамма", "граммов", "gram", "grams":
 		return "g"
 	case "кг", "килограмм", "килограмма", "килограммов", "kg":
 		return "kg"
