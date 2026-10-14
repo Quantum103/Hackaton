@@ -65,14 +65,8 @@ func TestExtractXLSX(t *testing.T) {
 }
 
 func TestExtractPDFTextLayer(t *testing.T) {
-	pdf := []byte("%PDF-1.4
-1 0 obj
-<< /Length 25 >>
-stream
-(Milk 2 L) Tj
-endstream
-endobj
-%%EOF")
+	newline := string([]byte{10})
+	pdf := []byte("%PDF-1.4" + newline + "1 0 obj" + newline + "<< /Length 25 >>" + newline + "stream" + newline + "(Milk 2 L) Tj" + newline + "endstream" + newline + "endobj" + newline + "%%EOF")
 	text, err := extractPDF(pdf)
 	if err != nil {
 		t.Fatal(err)
