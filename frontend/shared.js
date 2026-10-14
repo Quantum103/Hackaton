@@ -157,6 +157,7 @@ const UI = (() => {
   const NAV = [
     ['stock', 'Склад', 'sclad.html'],
     ['supplies', 'Поставки', 'supplies.html'],
+    ['requests', 'Заявка', 'requests.html'],
     ['menu', 'Меню', 'app.html#/menu'],
     ['orders', 'Заказы', 'orders.html'],
     ['stoplist', 'Стоп-лист', 'stoplist.html'],

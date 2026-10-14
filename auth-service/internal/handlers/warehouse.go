@@ -206,7 +206,7 @@ func (a *API) availableProduct(productID int64, now time.Time) (int64, error) {
 }
 
 func (a *API) Products(w http.ResponseWriter, r *http.Request) {
-	rows, err := a.DB.Query("SELECT id,name,unit FROM products ORDER BY name COLLATE NOCASE")
+	rows, err := a.DB.Query("SELECT id,name,unit,base_price_kopecks FROM products ORDER BY name COLLATE NOCASE")
 	if err != nil {
 		a.writeError(w, http.StatusInternalServerError, "Не удалось загрузить продукты")
 		return
@@ -215,12 +215,17 @@ func (a *API) Products(w http.ResponseWriter, r *http.Request) {
 	products := make([]contract.Product, 0)
 	for rows.Next() {
 		var id int64
+		var price sql.NullInt64
 		var product contract.Product
-		if err := rows.Scan(&id, &product.Name, &product.Unit); err != nil {
+		if err := rows.Scan(&id, &product.Name, &product.Unit, &price); err != nil {
 			a.writeError(w, http.StatusInternalServerError, "Не удалось прочитать продукты")
 			return
 		}
 		product.ID = strconv.FormatInt(id, 10)
+		product.PriceConfigured = price.Valid
+		if price.Valid {
+			product.BasePriceKopecks = price.Int64
+		}
 		products = append(products, product)
 	}
 	if err := rows.Err(); err != nil {

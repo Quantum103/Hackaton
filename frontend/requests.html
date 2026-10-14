@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Заявка — Stoplist</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="requests.css" />
+</head>
+<body>
+  <div class="app" id="app">
+    <main class="page request-page" id="page">
+      <section class="request-hero rise">
+        <div class="panel-bg"><i></i><i></i><span class="grain"></span></div>
+        <div class="request-hero-copy">
+          <span class="label home-badge">AI · Документы · Каталог</span>
+          <h1 class="page-title">Заявка</h1>
+          <p class="page-sub">Загрузи документ — нейросеть подготовит позиции, найдёт товары в каталоге и подставит цены. Перед сохранением всё можно проверить и изменить.</p>
+        </div>
+        <div class="request-hero-mark" aria-hidden="true">
+          <div class="request-file-icon">
+            <span></span><span></span><span></span><b>AI</b>
+          </div>
+          <div class="request-orbit orbit-one"></div>
+          <div class="request-orbit orbit-two"></div>
+        </div>
+      </section>
+
+      <section class="request-upload glass rise" aria-labelledby="uploadTitle">
+        <div class="request-section-heading">
+          <div>
+            <span class="label">01 / Источник</span>
+            <h2 class="panel-title" id="uploadTitle">Загрузить заявку</h2>
+          </div>
+          <span class="request-format-note">До 12 МБ на файл</span>
+        </div>
+        <form id="requestUploadForm" class="request-upload-form">
+          <label class="request-dropzone" id="requestDropzone" for="requestFile">
+            <input id="requestFile" name="file" type="file" accept=".pdf,.xlsx,.docx,.txt,.csv,.tsv,.json,.xml,.md,.log,.png,.jpg,.jpeg" />
+            <span class="request-upload-symbol" aria-hidden="true">↑</span>
+            <strong id="fileName">Перетащи файл сюда или нажми, чтобы выбрать</strong>
+            <span>PDF, Excel (.xlsx), Word (.docx), TXT, CSV, JSON, XML, PNG, JPG</span>
+          </label>
+          <div class="request-upload-actions">
+            <button type="submit" class="btn btn-solid" id="analyzeButton">Распознать документ</button>
+            <button type="button" class="btn btn-line" id="createManualRequest">Создать вручную</button>
+            <span class="form-msg" id="uploadMessage" role="status"></span>
+          </div>
+        </form>
+        <div class="request-ai-status" id="aiStatus" hidden>
+          <span class="request-ai-pulse"></span>
+          <div><strong id="aiStatusTitle">Документ обработан</strong><p id="aiStatusText"></p></div>
+        </div>
+        <div class="request-warnings" id="requestWarnings" hidden></div>
+      </section>
+
+      <section class="request-editor glass rise" id="requestEditor" hidden aria-labelledby="editorTitle">
+        <div class="request-section-heading">
+          <div>
+            <span class="label">02 / Проверка</span>
+            <h2 class="panel-title" id="editorTitle">Состав заявки</h2>
+          </div>
+          <span class="request-draft-badge">Черновик · ещё не сохранён</span>
+        </div>
+
+        <div class="request-meta-grid">
+          <label class="field">
+            <span class="label">Заказчик / инициатор</span>
+            <input class="input" id="customerName" maxlength="200" placeholder="Название компании или ФИО" />
+          </label>
+          <div class="request-source-meta">
+            <span class="label">Исходный документ</span>
+            <strong id="sourceFilename">Без файла</strong>
+            <span id="sourceHashShort"></span>
+          </div>
+        </div>
+
+        <div class="request-table-wrap">
+          <table class="request-table">
+            <thead>
+              <tr>
+                <th>Товар из каталога</th>
+                <th>Кол-во</th>
+                <th>Цена за ед.</th>
+                <th>Скидка строки</th>
+                <th class="request-total-column">Сумма</th>
+                <th><span class="sr-only">Удалить</span></th>
+              </tr>
+            </thead>
+            <tbody id="requestItems"></tbody>
+          </table>
+        </div>
+        <div class="request-table-actions">
+          <button class="btn btn-line btn-sm" type="button" id="addRequestItem">+ Добавить позицию</button>
+          <span class="request-match-legend"><i class="legend-match"></i> найдено в каталоге <i class="legend-review"></i> требует выбора</span>
+        </div>
+
+        <div class="request-bottom-grid">
+          <div class="request-discount-panel">
+            <span class="label">Общая скидка</span>
+            <label class="request-discount-input">
+              <input class="input" type="number" id="globalDiscount" min="0" max="100" step="1" value="0" />
+              <span>%</span>
+            </label>
+            <p>Применяется после скидки каждой отдельной позиции.</p>
+          </div>
+          <div class="request-summary" aria-live="polite">
+            <div><span>Сумма без скидок</span><strong id="summarySubtotal">0 ₽</strong></div>
+            <div><span>Скидка всего</span><strong id="summaryDiscount">−0 ₽</strong></div>
+            <div class="summary-final"><span>Итого к заявке</span><strong id="summaryTotal">0 ₽</strong></div>
+          </div>
+        </div>
+        <div class="request-save-row">
+          <span class="form-msg" id="saveMessage" role="status"></span>
+          <button class="btn btn-solid" id="saveRequest" type="button">Сохранить заявку</button>
+        </div>
+      </section>
+
+      <details class="request-prices glass rise" id="pricesPanel">
+        <summary>
+          <div><span class="label">03 / Справочник</span><h2 class="panel-title">Цены каталога</h2><p class="page-sub">Базовые цены хранятся в БД. Скидки в заявке не меняют сам каталог.</p></div>
+          <span class="request-details-chevron" aria-hidden="true">⌄</span>
+        </summary>
+        <div class="request-table-wrap">
+          <table class="request-table request-price-table">
+            <thead><tr><th>Товар</th><th>Единица каталога</th><th>Цена за единицу, ₽</th><th></th></tr></thead>
+            <tbody id="catalogPrices"><tr><td colspan="4">Загрузка каталога…</td></tr></tbody>
+          </table>
+        </div>
+        <p class="request-prices-note">Цена хранится в копейках. Для существующих товаров без цены сначала задай её здесь — система не будет считать нулевую цену случайно.</p>
+      </details>
+
+      <section class="request-history rise" aria-labelledby="historyTitle">
+        <div class="request-section-heading">
+          <div><span class="label">04 / История</span><h2 class="panel-title" id="historyTitle">Сохранённые заявки</h2></div>
+          <button type="button" class="btn btn-line btn-sm" id="refreshRequests">Обновить</button>
+        </div>
+        <div id="requestHistory"><div class="glass empty"><p>Загрузка истории заявок…</p></div></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="api.js"></script>
+  <script src="shared.js"></script>
+  <script src="requests.js"></script>
+</body>
+</html>

@@ -96,6 +96,7 @@
   const NAV = [
     ['stock', 'Склад', 'sclad.html'],
     ['supplies', 'Поставки', 'supplies.html'],
+    ['requests', 'Заявка', 'requests.html'],
     ['menu', 'Меню'],
     ['orders', 'Заказы', 'orders.html'],
     ['stoplist', 'Стоп-лист', 'stoplist.html'],

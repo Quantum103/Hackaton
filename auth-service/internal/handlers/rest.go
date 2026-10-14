@@ -52,6 +52,11 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	authed("POST", "/api/users/{id}/role", true, a.SetUserRole)
 
 	authed("GET", "/api/products", false, a.Products)
+	authed("POST", "/api/products/{productId}/price", true, a.UpdateProductPrice)
+	authed("GET", "/api/requests", false, a.Requests)
+	authed("GET", "/api/requests/{id}", false, a.RequestByID)
+	authed("POST", "/api/requests", true, a.CreateRequest)
+	mux.Handle("POST /api/requests/parse", a.protectLongRunning(false, a.ParseRequestFile))
 	authed("GET", "/api/stock", false, a.Stock)
 	authed("GET", "/api/stock/{productId}/batches", false, a.Batches)
 	authed("GET", "/api/expiry", false, a.Expiry)
@@ -99,6 +104,33 @@ func (a *API) protect(adminOnly bool, next http.HandlerFunc) http.Handler {
 			return
 		}
 		ctx := context.WithValue(r.Context(), authContextKey, auth)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// protectLongRunning authenticates under the SQLite request lock, then releases it before
+// CPU/network-heavy work such as AI extraction. The handler only reads the catalogue afterwards.
+func (a *API) protectLongRunning(adminOnly bool, next http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestMu.Lock()
+		auth, err := a.authenticate(r)
+		if err != nil {
+			requestMu.Unlock()
+			a.writeError(w, http.StatusUnauthorized, "Требуется вход или срок сессии истёк")
+			return
+		}
+		if adminOnly && auth.User.Role != contract.RoleAdmin {
+			requestMu.Unlock()
+			a.writeError(w, http.StatusForbidden, "Недостаточно прав для выполнения операции")
+			return
+		}
+		if err := a.maintain(); err != nil {
+			requestMu.Unlock()
+			a.writeError(w, http.StatusInternalServerError, "Не удалось обновить состояние склада")
+			return
+		}
+		ctx := context.WithValue(r.Context(), authContextKey, auth)
+		requestMu.Unlock()
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
