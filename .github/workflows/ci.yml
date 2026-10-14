@@ -88,6 +88,18 @@ jobs:
 
           PRODUCTS=$(curl --fail --silent -H "Authorization: Bearer $TOKEN" http://localhost/api/products)
           PRODUCT_ID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["id"])' <<< "$PRODUCTS")
+
+          # Exercise the new request module end-to-end against the real SQLite database.
+          curl --fail --silent -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{"priceKopecks":250}' "http://localhost/api/products/$PRODUCT_ID/price" > /tmp/product-price.json
+          REQUEST_PAYLOAD=$(python3 -c 'import json,sys; print(json.dumps({"customerName":"CI request","sourceFilename":"ci.txt","sourceHash":"a"*64,"globalDiscountPercent":10,"items":[{"productId":sys.argv[1],"quantity":2,"itemDiscountPercent":5}]}))' "$PRODUCT_ID")
+          REQUEST_JSON=$(curl --fail --silent -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$REQUEST_PAYLOAD" http://localhost/api/requests)
+          test "$(python3 -c 'import json,sys; print(json.load(sys.stdin)["totalKopecks"])' <<< "$REQUEST_JSON")" = "428"
+          REQUEST_ID=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<< "$REQUEST_JSON")
+          SAVED_REQUEST=$(curl --fail --silent -H "Authorization: Bearer $TOKEN" "http://localhost/api/requests/$REQUEST_ID")
+          test "$(python3 -c 'import json,sys; print(len(json.load(sys.stdin)["items"]))' <<< "$SAVED_REQUEST")" = "1"
+          DUPLICATE_STATUS=$(curl --silent -o /tmp/duplicate-request.json -w '%{http_code}' -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d "$REQUEST_PAYLOAD" http://localhost/api/requests)
+          test "$DUPLICATE_STATUS" = "409"
+
           DISH_JSON=$(curl --fail --silent \
             -X POST -H "Authorization: Bearer $TOKEN" \
             -H 'Content-Type: application/json' \
