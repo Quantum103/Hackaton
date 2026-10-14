@@ -97,12 +97,38 @@ const API = (() => {
     return data
   }
 
+  async function upload(path, file) {
+    const headers = { Accept: 'application/json' }
+    const token = getToken()
+    if (token) headers.Authorization = 'Bearer ' + token
+    const form = new FormData()
+    form.append('file', file)
+
+    let response
+    try {
+      response = await fetch(CONFIG.baseUrl + path, { method: 'POST', headers, body: form })
+    } catch {
+      throw new ApiError(0, 'Нет связи с сервером')
+    }
+
+    const rev = Number(response.headers.get('X-Data-Rev'))
+    if (rev) lastRev = rev
+    const data = await response.json().catch(() => null)
+    if (!response.ok) {
+      const down = response.status >= 502 && response.status <= 504
+      throw new ApiError(response.status, down ? 'Сервер недоступен' : data && data.message, data)
+    }
+    syncClock(data)
+    return data
+  }
+
   /* ---------- Публичный интерфейс ---------- */
 
   return {
     ApiError,
     get: (path) => remote('GET', path),
     post: (path, body) => remote('POST', path, body),
+    upload: (path, file) => upload(path, file),
     del: (path) => remote('DELETE', path),
     getUser,
     setSession,
