@@ -43,6 +43,7 @@ jobs:
           node --check frontend/api.js
           node --check frontend/shared.js
           node --check frontend/app.js
+          node --check frontend/requests.js
 
   docker-smoke-test:
     runs-on: ubuntu-latest
