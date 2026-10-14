@@ -28,12 +28,16 @@ type requestCatalogProduct struct {
 	Unit             string
 	BasePriceKopecks int64
 	PriceConfigured  bool
+	Available        int64
 }
 
 type requestPreviewItem struct {
 	OriginalName        string  `json:"originalName"`
 	ProductName         string  `json:"productName"`
 	ProductID           string  `json:"productId"`
+	CatalogMatch        bool    `json:"catalogMatch"`
+	UnitMismatch        bool    `json:"unitMismatch"`
+	Available           int64   `json:"available"`
 	Quantity            float64 `json:"quantity"`
 	Unit                string  `json:"unit"`
 	UnitPriceKopecks    int64   `json:"unitPriceKopecks"`
@@ -47,6 +51,7 @@ type parsedRequestResponse struct {
 	SourceFilename string               `json:"sourceFilename"`
 	SourceHash     string               `json:"sourceHash"`
 	AIUsed         bool                 `json:"aiUsed"`
+	ParserMode     string               `json:"parserMode"`
 	DuplicateSaved bool                 `json:"duplicateSaved"`
 	Items          []requestPreviewItem `json:"items"`
 	Warnings       []string             `json:"warnings"`
@@ -59,6 +64,7 @@ type requestCatalogDTO struct {
 	Unit             string `json:"unit"`
 	BasePriceKopecks int64  `json:"basePriceKopecks"`
 	PriceConfigured  bool   `json:"priceConfigured"`
+	Available        int64  `json:"available"`
 }
 
 type createRequestInput struct {
@@ -73,6 +79,7 @@ type createRequestItem struct {
 	ProductID           string  `json:"productId"`
 	Quantity            float64 `json:"quantity"`
 	ItemDiscountPercent int     `json:"itemDiscountPercent"`
+	UnitPriceKopecks    *int64  `json:"unitPriceKopecks"`
 }
 
 type savedRequestItem struct {
@@ -105,13 +112,13 @@ func (a *API) requestCatalog() ([]requestCatalogProduct, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
 	products := make([]requestCatalogProduct, 0)
 	for rows.Next() {
 		var product requestCatalogProduct
 		var price sql.NullInt64
 		if err := rows.Scan(&product.ID, &product.Name, &product.Unit, &price); err != nil {
+			rows.Close()
 			return nil, err
 		}
 		product.PriceConfigured = price.Valid
@@ -121,9 +128,37 @@ func (a *API) requestCatalog() ([]requestCatalogProduct, error) {
 		products = append(products, product)
 	}
 	if err := rows.Err(); err != nil {
+		rows.Close()
 		return nil, err
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+
+	now, _ := a.nowAndSpeed()
+	availableByProduct, err := a.availableStockByProduct(now)
+	if err != nil {
+		return nil, err
+	}
+	for i := range products {
+		products[i].Available = availableByProduct[products[i].ID]
+	}
 	return products, nil
+}
+
+// availableStockByProduct counts only non-expired remaining stock in the app's current clock.
+func (a *API) availableStockByProduct(now time.Time) (map[int64]int64, error) {
+	batches, err := a.loadBatchRows("")
+	if err != nil {
+		return nil, err
+	}
+	available := make(map[int64]int64)
+	for _, batch := range batches {
+		if batch.QtyRemaining > 0 && now.Before(batch.ExpiresAt) {
+			available[batch.ProductID] += batch.QtyRemaining
+		}
+	}
+	return available, nil
 }
 
 func catalogDTO(products []requestCatalogProduct) []requestCatalogDTO {
@@ -131,7 +166,7 @@ func catalogDTO(products []requestCatalogProduct) []requestCatalogDTO {
 	for _, product := range products {
 		result = append(result, requestCatalogDTO{
 			ID: strconv.FormatInt(product.ID, 10), Name: product.Name, Unit: product.Unit,
-			BasePriceKopecks: product.BasePriceKopecks, PriceConfigured: product.PriceConfigured,
+			BasePriceKopecks: product.BasePriceKopecks, PriceConfigured: product.PriceConfigured, Available: product.Available,
 		})
 	}
 	return result
@@ -177,7 +212,7 @@ func (a *API) ParseRequestFile(w http.ResponseWriter, r *http.Request) {
 	baseURL, model := requestimport.OllamaConfig()
 
 	log.Printf(
-		"Импорт накладной: файл=%s, размер=%d байт, текст=%d символов, изображение=%d байт, модель=%s",
+		"Импорт заявки: файл=%s, размер=%d байт, текст=%d символов, изображение=%d байт, модель=%s",
 		filename,
 		len(data),
 		len([]rune(source.Text)),
@@ -185,23 +220,53 @@ func (a *API) ParseRequestFile(w http.ResponseWriter, r *http.Request) {
 		model,
 	)
 
-	ctx, cancel := context.WithTimeout(r.Context(), 48*time.Second)
-	started := time.Now()
-	document, aiErr := requestimport.Analyze(ctx, source, baseURL, model)
-	elapsed := time.Since(started)
-	cancel()
-
-	log.Printf("Анализ Ollama завершён: время=%s, ошибка=%v", elapsed, aiErr)
-
-	aiUsed := aiErr == nil
 	warnings := make([]string, 0)
+	var document requestimport.Document
+	var aiErr error
+	aiUsed := false
+	parserMode := "ai"
 
-	if aiErr != nil {
-		log.Printf("Ошибка анализа через Ollama: %v", aiErr)
-		document = requestimport.Fallback(source.Text)
-		warnings = append(warnings, "Нейросеть не ответила — включён упрощённый разбор. Проверь каждую строку вручную.")
+	// Small text lists are faster and more reliable with a deterministic parser;
+	// don't wait for a local LLM to interpret a simple "name quantity unit" row.
+	ext := strings.ToLower(filepath.Ext(filename))
+	structuredText := source.Text != "" && (ext == ".txt" || ext == ".csv" || ext == ".tsv" || ext == ".md" || ext == ".log")
+	if structuredText {
+		candidate := requestimport.Fallback(source.Text)
+		if len(candidate.Items) > 0 {
+			document = candidate
+			parserMode = "structured"
+		}
 	}
 
+	if parserMode != "structured" {
+		ctx, cancel := context.WithTimeout(r.Context(), 26*time.Second)
+		started := time.Now()
+		document, aiErr = requestimport.Analyze(ctx, source, baseURL, model)
+		elapsed := time.Since(started)
+		cancel()
+		log.Printf("Анализ Ollama завершён: время=%s, ошибка=%v", elapsed, aiErr)
+
+		if aiErr != nil {
+			log.Printf("Ошибка анализа через Ollama: %v", aiErr)
+			document = requestimport.Fallback(source.Text)
+			parserMode = "fallback"
+			warnings = append(warnings, "Нейросеть не ответила — включён упрощённый разбор. Проверь каждую строку вручную.")
+		} else if len(document.Items) == 0 && source.Text != "" {
+			// A local model may return syntactically valid JSON but no positions.
+			// In that case, don't silently show an empty draft if rows are readable.
+			candidate := requestimport.Fallback(source.Text)
+			parserMode = "fallback"
+			if len(candidate.Items) > 0 {
+				document = candidate
+				warnings = append(warnings, "Нейросеть не выделила позиции; строки восстановлены упрощённым разбором. Проверь распознавание.")
+			}
+		}
+		if parserMode == "ai" && aiErr == nil && len(document.Items) > 0 {
+			aiUsed = true
+		}
+	}
+
+	log.Printf("Импорт заявки завершён: режим=%s, позиций=%d", parserMode, len(document.Items))
 	if len(document.Items) == 0 {
 		warnings = append(warnings, "Не удалось уверенно выделить позиции. Их можно добавить вручную.")
 	}
@@ -224,6 +289,7 @@ func (a *API) ParseRequestFile(w http.ResponseWriter, r *http.Request) {
 			Confidence:   item.Confidence,
 		}
 		product, matched := matchRequestProduct(item.ProductName, products)
+		row.CatalogMatch = matched
 		if matched {
 			fromUnit := requestimport.NormalizeUnit(item.Unit)
 			if fromUnit == "" {
@@ -237,9 +303,17 @@ func (a *API) ParseRequestFile(w http.ResponseWriter, r *http.Request) {
 				row.Unit = product.Unit
 				row.UnitPriceKopecks = product.BasePriceKopecks
 				row.PriceConfigured = product.PriceConfigured
+				row.Available = product.Available
+				if product.Available <= 0 {
+					warnings = append(warnings, fmt.Sprintf("Товар «%s» найден в каталоге, но доступного остатка на складе нет.", product.Name))
+				}
 			} else {
-				warnings = append(warnings, fmt.Sprintf("Для «%s» единица «%s» не совпадает с каталогом — проверь количество и товар.", item.ProductName, item.Unit))
+				row.UnitMismatch = true
+				row.Available = product.Available
+				warnings = append(warnings, fmt.Sprintf("Товар «%s» найден, но единица «%s» не совпадает с единицей каталога «%s». Выбери товар/единицу вручную.", item.ProductName, item.Unit, product.Unit))
 			}
+		} else {
+			warnings = append(warnings, fmt.Sprintf("Товара «%s» нет в каталоге и на складе. Добавь его через раздел «Поставки» или выбери замену из списка.", item.ProductName))
 		}
 		if row.Unit == "" {
 			row.Unit = "pcs"
@@ -257,7 +331,7 @@ func (a *API) ParseRequestFile(w http.ResponseWriter, r *http.Request) {
 	a.sendJSON(w, http.StatusOK, parsedRequestResponse{
 		CustomerName: strings.TrimSpace(document.CustomerName), SourceFilename: filename, SourceHash: hashHex,
 		AIUsed: aiUsed, DuplicateSaved: duplicate, Items: preview, Warnings: uniqueStrings(warnings),
-		Catalog: catalogDTO(products),
+		Catalog: catalogDTO(products), ParserMode: parserMode,
 	})
 }
 
@@ -457,11 +531,22 @@ func (a *API) CreateRequest(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		if !price.Valid {
-			a.writeError(w, http.StatusBadRequest, "Для товара «"+productName+"» не задана цена. Сначала укажи цену в блоке «Цены каталога».")
-			return
+		var unitPriceKopecks int64
+		if price.Valid {
+			// A configured catalogue price always wins over any browser-provided value.
+			unitPriceKopecks = price.Int64
+		} else {
+			if item.UnitPriceKopecks == nil {
+				a.writeError(w, http.StatusBadRequest, "Для товара «"+productName+"» нет цены в БД. Введи цену вручную в строке заявки.")
+				return
+			}
+			if *item.UnitPriceKopecks < 0 || *item.UnitPriceKopecks > 1000000000000 {
+				a.writeError(w, http.StatusBadRequest, "Ручная цена должна быть от 0 до 10 000 000 000 ₽.")
+				return
+			}
+			unitPriceKopecks = *item.UnitPriceKopecks
 		}
-		lineSubtotal := int64(math.Round(float64(price.Int64) * item.Quantity))
+		lineSubtotal := int64(math.Round(float64(unitPriceKopecks) * item.Quantity))
 		lineTotal := int64(math.Round(float64(lineSubtotal) * (1 - float64(item.ItemDiscountPercent)/100) * (1 - float64(input.GlobalDiscountPercent)/100)))
 		if lineSubtotal < 0 || lineTotal < 0 {
 			a.writeError(w, http.StatusBadRequest, "Не удалось рассчитать стоимость позиции")
@@ -471,7 +556,7 @@ func (a *API) CreateRequest(w http.ResponseWriter, r *http.Request) {
 		grandTotal += lineTotal
 		_, err = tx.Exec(
 			"INSERT INTO customer_request_items(request_id,product_id,product_name,unit,quantity,unit_price_kopecks,item_discount_percent,subtotal_kopecks,total_kopecks) VALUES(?,?,?,?,?,?,?,?,?)",
-			requestID, productID, productName, unit, item.Quantity, price.Int64, item.ItemDiscountPercent, lineSubtotal, lineTotal,
+			requestID, productID, productName, unit, item.Quantity, unitPriceKopecks, item.ItemDiscountPercent, lineSubtotal, lineTotal,
 		)
 		if err != nil {
 			a.writeError(w, http.StatusInternalServerError, "Не удалось сохранить товарную позицию")

@@ -92,6 +92,7 @@ type Product struct {
 	Unit              Unit   `json:"unit"`
 	BasePriceKopecks  int64  `json:"basePriceKopecks"`
 	PriceConfigured   bool   `json:"priceConfigured"`
+	Available         int64  `json:"available"` // current non-expired stock in base units
 }
 
 // StockItem — остаток по одному продукту. В список попадают только продукты,
