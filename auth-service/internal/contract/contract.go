@@ -87,9 +87,11 @@ type SetRoleRequest struct {
 // ---------- Склад ----------
 
 type Product struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Unit Unit   `json:"unit"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Unit              Unit   `json:"unit"`
+	BasePriceKopecks  int64  `json:"basePriceKopecks"`
+	PriceConfigured   bool   `json:"priceConfigured"`
 }
 
 // StockItem — остаток по одному продукту. В список попадают только продукты,
