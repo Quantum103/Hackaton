@@ -147,8 +147,10 @@ func Analyze(ctx context.Context, source Source, baseURL, model string) (Documen
 	if source.Text != "" {
 		text := source.Text
 		runes := []rune(text)
-		if len(runes) > 50000 {
-			text = string(runes[:50000])
+		// Long PDFs can be expensive for small local models. Keep the prompt bounded;
+		// the deterministic parser remains available for structured text documents.
+		if len(runes) > 12000 {
+			text = string(runes[:12000])
 		}
 		userText += string([]byte{10, 10}) + "Содержимое документа:" + string([]byte{10}) + text
 	} else {
@@ -183,7 +185,7 @@ func Analyze(ctx context.Context, source Source, baseURL, model string) (Documen
 		return Document{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 45 * time.Second}
+	client := &http.Client{Timeout: 24 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return Document{}, fmt.Errorf("Ollama недоступен: %w", err)
@@ -262,27 +264,43 @@ func Fallback(text string) Document {
 				if i+1 < len(fields) {
 					unit = NormalizeUnit(fields[i+1])
 				}
-				result.Items = append(result.Items, Item{ProductName: name, Quantity: q, Unit: unit, Confidence: 0.25})
+				if unit == "" {
+					unit = unitFromQuantityToken(fields[i])
+				}
+				result.Items = append(result.Items, Item{ProductName: name, Quantity: q, Unit: unit, Confidence: 0.35})
 				break
 			}
 			continue
 		}
+
+		// Handles simple text rows ("шашлык 500 грамм") and flattened PDF
+		// text containing more than one item on the same line.
 		tokens := strings.Fields(line)
-		for i, token := range tokens {
-			q, ok := parseQuantity(token)
+		segmentStart := 0
+		for i := 0; i < len(tokens); i++ {
+			q, ok := parseQuantity(tokens[i])
 			if !ok || q <= 0 {
 				continue
 			}
-			name := strings.TrimSpace(strings.Join(tokens[:i], " "))
+			name := strings.Trim(strings.Join(tokens[segmentStart:i], " "), " \\t,;|:-")
 			if name == "" || looksLikeHeader(name) {
-				break
+				segmentStart = i + 1
+				continue
 			}
 			unit := ""
-			if i+1 < len(tokens) {
-				unit = NormalizeUnit(tokens[i+1])
+			next := i + 1
+			if next < len(tokens) {
+				unit = NormalizeUnit(tokens[next])
+				if unit != "" {
+					next++
+				}
 			}
-			result.Items = append(result.Items, Item{ProductName: name, Quantity: q, Unit: unit, Confidence: 0.2})
-			break
+			if unit == "" {
+				unit = unitFromQuantityToken(tokens[i])
+			}
+			result.Items = append(result.Items, Item{ProductName: name, Quantity: q, Unit: unit, Confidence: 0.30})
+			segmentStart = next
+			i = next - 1
 		}
 	}
 	return result
@@ -304,7 +322,40 @@ func splitLine(line string) []string {
 			return fields
 		}
 	}
+	if strings.Contains(line, ",") {
+		r := csv.NewReader(strings.NewReader(line))
+		r.Comma = ','
+		r.FieldsPerRecord = -1
+		if fields, err := r.Read(); err == nil && len(fields) > 1 {
+			return fields
+		}
+	}
 	return nil
+}
+
+func unitFromQuantityToken(value string) string {
+	cleaned := strings.ToLower(strings.TrimSpace(value))
+	cleaned = strings.Trim(cleaned, ".,:;")
+	units := []struct {
+		suffix string
+		unit   string
+	}{
+		{"килограммов", "kg"}, {"килограмма", "kg"}, {"килограмм", "kg"}, {"кг", "kg"}, {"kg", "kg"},
+		{"граммов", "g"}, {"грамма", "g"}, {"грамм", "g"}, {"grams", "g"}, {"gram", "g"}, {"гр", "g"}, {"г", "g"},
+		{"миллилитров", "ml"}, {"миллилитра", "ml"}, {"миллилитр", "ml"}, {"мл", "ml"}, {"ml", "ml"},
+		{"литров", "l"}, {"литра", "l"}, {"литр", "l"}, {"л", "l"}, {"liter", "l"}, {"litre", "l"},
+		{"штук", "pcs"}, {"штуки", "pcs"}, {"штука", "pcs"}, {"pcs", "pcs"}, {"шт", "pcs"},
+	}
+	for _, entry := range units {
+		if !strings.HasSuffix(cleaned, entry.suffix) || len(cleaned) <= len(entry.suffix) {
+			continue
+		}
+		number := strings.TrimSpace(strings.TrimSuffix(cleaned, entry.suffix))
+		if _, err := strconv.ParseFloat(strings.ReplaceAll(number, ",", "."), 64); err == nil {
+			return entry.unit
+		}
+	}
+	return ""
 }
 
 func parseQuantity(value string) (float64, bool) {
