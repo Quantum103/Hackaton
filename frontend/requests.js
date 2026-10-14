@@ -132,6 +132,25 @@
     }
   })
 
+  el('createManualRequest').addEventListener('click', () => {
+    if (items.length && !window.confirm('Заменить текущий черновик пустой заявкой?')) return
+    items = []
+    currentSourceFilename = ''
+    currentSourceHash = ''
+    duplicateSaved = false
+    customerName.value = ''
+    sourceFilename.textContent = 'Заявка без файла'
+    sourceHashShort.textContent = 'Создана вручную'
+    globalDiscount = 0
+    globalDiscountNode.value = '0'
+    aiStatus.hidden = true
+    renderWarnings([])
+    editor.hidden = false
+    renderRows()
+    message(uploadMessage, 'Пустой черновик создан. Добавь позиции и выбери товары из каталога.', false)
+    editor.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+
   uploadForm.addEventListener('submit', async (event) => {
     event.preventDefault()
     const file = fileInput.files[0]
